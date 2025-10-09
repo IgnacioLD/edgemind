@@ -98,6 +98,9 @@ dependencies {
     // Using latest version for IR v10 support
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
 
+    // JSON parsing for tokenizer.json
+    implementation("org.json:json:20240303")
+
     // TensorFlow Lite (legacy/fallback)
     implementation("org.tensorflow:tensorflow-lite:2.14.0")
     implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")

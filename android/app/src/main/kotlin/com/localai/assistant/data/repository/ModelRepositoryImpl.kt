@@ -95,52 +95,78 @@ class ModelRepositoryImpl @Inject constructor(
             )
             Timber.d("Token IDs: ${tokenized.inputIds.take(10).joinToString(", ")}... (${tokenized.inputIds.size} tokens)")
 
-            // Step 2: Run inference
-            Timber.d("Running inference on ${model.getAccelerationType().name}...")
-            val logits = model.runInference(
-                inputIds = tokenized.inputIds,
-                attentionMask = tokenized.attentionMask
-            )
+            // Step 2: Autoregressive generation loop
+            Timber.d("Starting text generation on ${model.getAccelerationType().name}...")
 
-            // Step 3: Decode output (greedy decoding)
-            // Logits shape: [batch=1, seq_len, vocab_size=32064]
-            // We take the last token's logits for next token prediction
-            val vocabSize = 32064  // Phi-3 vocab size
-            val seqLen = tokenized.inputIds.size
+            val maxNewTokens = 10  // Limited to 10 tokens (no KV cache = slow)
+            val vocabSize = 32064  // Phi-3 actual vocab size
+            val generatedTokens = mutableListOf<Long>()
+            var currentInputIds = tokenized.inputIds.toMutableList()
+            var currentAttentionMask = tokenized.attentionMask.toMutableList()
 
-            // Get logits for the last position
-            val lastTokenLogits = if (logits.size >= vocabSize) {
-                val startIdx = (seqLen - 1) * vocabSize
-                if (startIdx + vocabSize <= logits.size) {
-                    logits.sliceArray(startIdx until startIdx + vocabSize)
+            // Generate tokens one by one
+            for (i in 0 until maxNewTokens) {
+                // Run inference
+                val logits = model.runInference(
+                    inputIds = currentInputIds.toLongArray(),
+                    attentionMask = currentAttentionMask.toLongArray()
+                )
+
+                // Get logits for the last position
+                val seqLen = currentInputIds.size
+                val lastTokenLogits = if (logits.size >= vocabSize) {
+                    val startIdx = (seqLen - 1) * vocabSize
+                    if (startIdx + vocabSize <= logits.size) {
+                        logits.sliceArray(startIdx until startIdx + vocabSize)
+                    } else {
+                        logits.sliceArray(logits.size - vocabSize until logits.size)
+                    }
                 } else {
-                    logits.sliceArray(logits.size - vocabSize until logits.size)
+                    logits
                 }
-            } else {
-                logits
+
+                // Greedy sampling: pick token with highest probability
+                val nextTokenId = lastTokenLogits.indices.maxByOrNull { lastTokenLogits[it] } ?: 0
+                generatedTokens.add(nextTokenId.toLong())
+
+                // Decode and emit the new token (streaming)
+                val tokenText = tokenizer.decode(longArrayOf(nextTokenId.toLong()), skipSpecialTokens = true)
+                Timber.d("Generated token $i: ID=$nextTokenId, text='$tokenText'")
+
+                emit(
+                    InferenceResult.Streaming(
+                        text = tokenText,
+                        tokensGenerated = generatedTokens.size
+                    )
+                )
+
+                // Check for EOS token (token ID 2 is common for EOS)
+                if (nextTokenId == 2 || nextTokenId == 0) {
+                    Timber.d("EOS token detected, stopping generation")
+                    break
+                }
+
+                // Append new token to input for next iteration
+                currentInputIds.add(nextTokenId.toLong())
+                currentAttentionMask.add(1L)
+
+                // Stop if sequence gets too long
+                if (currentInputIds.size > 512) {
+                    Timber.d("Max sequence length reached, stopping")
+                    break
+                }
             }
-
-            // Greedy sampling: pick token with highest probability
-            val nextTokenId = lastTokenLogits.indices.maxByOrNull { lastTokenLogits[it] } ?: 0
-
-            Timber.d("Generated next token ID: $nextTokenId")
 
             val inferenceTime = System.currentTimeMillis() - startTime
 
-            Timber.i("Text inference complete in ${inferenceTime}ms")
-
-            // TODO: Implement proper Phi-3 tokenizer (currently using placeholder with 99 tokens)
-            // For now, show that model is working
-            val outputText = "✅ Phi-3 model working with NNAPI acceleration!\n\n" +
-                    "Inference time: ${inferenceTime}ms\n" +
-                    "Input tokens: ${tokenized.inputIds.size}\n" +
-                    "Generated token ID: $nextTokenId\n\n" +
-                    "Note: Full tokenizer integration pending. Model loaded successfully on device NPU."
+            // Final result with full text
+            val fullText = tokenizer.decode(generatedTokens.toLongArray(), skipSpecialTokens = true)
+            Timber.i("Text generation complete: ${generatedTokens.size} tokens in ${inferenceTime}ms")
 
             emit(
                 InferenceResult.Success(
-                    text = outputText,
-                    tokensGenerated = 1,
+                    text = fullText,
+                    tokensGenerated = generatedTokens.size,
                     inferenceTimeMs = inferenceTime
                 )
             )

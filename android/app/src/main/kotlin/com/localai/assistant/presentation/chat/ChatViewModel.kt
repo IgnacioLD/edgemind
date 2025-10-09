@@ -83,19 +83,38 @@ class ChatViewModel @Inject constructor(
                             _uiState.update { it.copy(isLoading = true) }
                         }
 
-                        is InferenceResult.Success -> {
-                            val assistantMessage = Message(
-                                content = result.text,
-                                role = MessageRole.ASSISTANT
-                            )
+                        is InferenceResult.Streaming -> {
+                            // Append streaming token to the last message
                             _uiState.update { state ->
+                                val messages = state.messages.toMutableList()
+                                if (messages.isNotEmpty() && messages.last().role == MessageRole.ASSISTANT) {
+                                    // Append to existing assistant message
+                                    val lastMsg = messages.removeLast()
+                                    messages.add(lastMsg.copy(content = lastMsg.content + result.text))
+                                } else {
+                                    // Create new assistant message
+                                    messages.add(Message(content = result.text, role = MessageRole.ASSISTANT))
+                                }
+                                state.copy(messages = messages, isLoading = true)
+                            }
+                        }
+
+                        is InferenceResult.Success -> {
+                            // Final message with complete text
+                            _uiState.update { state ->
+                                val messages = state.messages.toMutableList()
+                                if (messages.isNotEmpty() && messages.last().role == MessageRole.ASSISTANT) {
+                                    // Update last message with final text
+                                    messages.removeLast()
+                                    messages.add(Message(content = result.text, role = MessageRole.ASSISTANT))
+                                }
                                 state.copy(
-                                    messages = state.messages + assistantMessage,
+                                    messages = messages,
                                     isLoading = false,
                                     error = null
                                 )
                             }
-                            Timber.d("Document processed in ${result.inferenceTimeMs}ms")
+                            Timber.d("Generation complete: ${result.tokensGenerated} tokens in ${result.inferenceTimeMs}ms")
                         }
 
                         is InferenceResult.Error -> {
