@@ -1,7 +1,6 @@
 package com.localai.assistant.data.repository
 
 import android.content.Context
-import com.localai.assistant.data.local.ImagePreprocessor
 import com.localai.assistant.data.local.ONNXModelWrapper
 import com.localai.assistant.data.local.SimpleTokenizer
 import com.localai.assistant.domain.model.InferenceRequest
@@ -21,6 +20,7 @@ import javax.inject.Singleton
 /**
  * Implementation of ModelRepository
  * Manages ONNX models with NPU/GPU/NNAPI acceleration
+ * Using Phi-3 mini (3.8B parameters, INT4 quantized to 2.6GB)
  */
 @Singleton
 class ModelRepositoryImpl @Inject constructor(
@@ -28,15 +28,13 @@ class ModelRepositoryImpl @Inject constructor(
 ) : ModelRepository {
 
     companion object {
-        // Model file paths in assets folder
-        // Using Granite Docling for both text and vision (multimodal model)
-        private const val TEXT_MODEL_PATH = "models/granite_docling.onnx"
-        private const val VISION_MODEL_PATH = "models/granite_docling.onnx"
+        // Model file paths - Phi-3 is text-only
+        private const val TEXT_MODEL_PATH = "models/phi3-mini-4k-instruct.onnx"
+        private const val VISION_MODEL_PATH = TEXT_MODEL_PATH  // Same model for now
     }
 
     private val models = mutableMapOf<ModelType, ONNXModelWrapper>()
     private val tokenizer = SimpleTokenizer(context)
-    private val imagePreprocessor = ImagePreprocessor(context)
 
     override suspend fun initializeModel(modelType: ModelType): Result<Unit> = withContext(Dispatchers.IO) {
         try {
@@ -88,69 +86,61 @@ class ModelRepositoryImpl @Inject constructor(
 
             val startTime = System.currentTimeMillis()
 
-            // Granite Docling requires both image and text prompt
-            if (request.imageUri == null) {
-                throw IllegalArgumentException("Granite Docling requires a document image. Please provide imageUri.")
-            }
-
-            // Step 1: Preprocess document image
-            Timber.d("Preprocessing document image: ${request.imageUri}")
-            val preprocessedImage = imagePreprocessor.preprocessImageFromUri(request.imageUri)
-            Timber.d("Image preprocessed: ${preprocessedImage.pixelValues.size} floats [1, 1, 3, 512, 512]")
-
-            // Step 2: Tokenize text prompt
+            // Step 1: Tokenize text prompt
             Timber.d("Tokenizing prompt: ${request.prompt.take(50)}...")
             val tokenized = tokenizer.encode(
                 text = request.prompt,
                 addSpecialTokens = true,
-                maxLength = 512
+                maxLength = 4096  // Phi-3 supports 4k context
             )
             Timber.d("Token IDs: ${tokenized.inputIds.take(10).joinToString(", ")}... (${tokenized.inputIds.size} tokens)")
 
-            // Step 3: Run 3-model pipeline for document inference
-            Timber.d("Running 3-model pipeline on ${model.getAccelerationType().name}...")
-            val logits = model.runDocumentInference(
-                pixelValues = preprocessedImage.pixelValues,
-                pixelAttentionMask = preprocessedImage.pixelAttentionMask,
+            // Step 2: Run inference
+            Timber.d("Running inference on ${model.getAccelerationType().name}...")
+            val logits = model.runInference(
                 inputIds = tokenized.inputIds,
                 attentionMask = tokenized.attentionMask
             )
 
-            // Step 4: Decode output (greedy decoding for DocTags markup)
-            val vocabSize = tokenizer.getVocabSize()
-            val outputTokens = mutableListOf<Long>()
+            // Step 3: Decode output (greedy decoding)
+            // Logits shape: [batch=1, seq_len, vocab_size=32064]
+            // We take the last token's logits for next token prediction
+            val vocabSize = 32064  // Phi-3 vocab size
+            val seqLen = tokenized.inputIds.size
 
-            // Simple greedy decode to generate DocTags output
-            for (i in logits.indices step vocabSize) {
-                if (i + vocabSize <= logits.size) {
-                    val slice = logits.sliceArray(i until i + vocabSize)
-                    val maxIdx = slice.indices.maxByOrNull { slice[it] } ?: 0
-                    outputTokens.add(maxIdx.toLong())
+            // Get logits for the last position
+            val lastTokenLogits = if (logits.size >= vocabSize) {
+                val startIdx = (seqLen - 1) * vocabSize
+                if (startIdx + vocabSize <= logits.size) {
+                    logits.sliceArray(startIdx until startIdx + vocabSize)
+                } else {
+                    logits.sliceArray(logits.size - vocabSize until logits.size)
                 }
-            }
-
-            Timber.d("Generated ${outputTokens.size} tokens (DocTags markup)")
-
-            // Decode tokens to DocTags text
-            val outputText = if (outputTokens.isNotEmpty()) {
-                tokenizer.decode(outputTokens.toLongArray(), skipSpecialTokens = true)
             } else {
-                "[Document processed but no structured output generated. Check model and tokenizer.]"
+                logits
             }
+
+            // Greedy sampling: pick token with highest probability
+            val nextTokenId = lastTokenLogits.indices.maxByOrNull { lastTokenLogits[it] } ?: 0
+
+            Timber.d("Generated next token ID: $nextTokenId")
+
+            // Decode token
+            val outputText = tokenizer.decode(longArrayOf(nextTokenId.toLong()), skipSpecialTokens = true)
 
             val inferenceTime = System.currentTimeMillis() - startTime
 
-            Timber.i("Document processing complete in ${inferenceTime}ms")
+            Timber.i("Text inference complete in ${inferenceTime}ms")
 
             emit(
                 InferenceResult.Success(
                     text = outputText,
-                    tokensGenerated = outputTokens.size,
+                    tokensGenerated = 1,  // Single token for now
                     inferenceTimeMs = inferenceTime
                 )
             )
         } catch (e: Exception) {
-            Timber.e(e, "Document inference failed")
+            Timber.e(e, "Inference failed")
             emit(InferenceResult.Error(e.message ?: "Unknown error", e))
         }
     }.flowOn(Dispatchers.IO)

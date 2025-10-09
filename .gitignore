@@ -8,6 +8,7 @@ ml/*/venv/
 
 # Model directories
 ml/*/models/
+ml/*/models_cache/
 android/app/src/main/assets/models/
 
 # Android build outputs

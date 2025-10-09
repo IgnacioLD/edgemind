@@ -4,8 +4,6 @@ import ai.onnxruntime.*
 import android.content.Context
 import android.os.Build
 import timber.log.Timber
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.nio.LongBuffer
 
@@ -18,19 +16,17 @@ import java.nio.LongBuffer
  * 2. GPU - Good for FP16/FP32 models
  * 3. CPU - Fallback for all devices
  *
- * Granite Docling uses 3-model pipeline:
- * 1. Vision Encoder: pixel_values -> image_features [batch, 64, 576]
- * 2. Embed Tokens: input_ids -> inputs_embeds [batch, seq_len, 576]
- * 3. Decoder: combined_embeds -> logits [batch, seq_len, vocab_size]
+ * Phi-3 mini (3.8B parameters, INT4 quantized to 2.6GB):
+ * - Input: input_ids [batch, seq_len], attention_mask [batch, seq_len], past_key_values (32 layers)
+ * - Output: logits [batch, seq_len, 32064], present key/values (32 layers)
+ * - 32 transformer layers with KV caching support
  */
 class ONNXModelWrapper(
     private val context: Context,
     private val modelPath: String
 ) {
 
-    private var visionEncoderSession: OrtSession? = null
-    private var embedTokensSession: OrtSession? = null
-    private var decoderSession: OrtSession? = null
+    private var session: OrtSession? = null
     private var environment: OrtEnvironment? = null
     private var accelerationType: AccelerationType = AccelerationType.CPU
 
@@ -42,30 +38,23 @@ class ONNXModelWrapper(
 
     /**
      * Initialize ONNX Runtime with hardware detection
-     * Loads 3-model Granite Docling pipeline
+     * Loads Phi-3 mini INT4 model
      */
     fun initialize(): Result<AccelerationType> {
         return try {
-            Timber.d("Initializing ONNX Runtime for Granite Docling (3-model pipeline)...")
+            Timber.d("Initializing ONNX Runtime for Phi-3 mini (INT4)...")
 
             // Create ONNX environment
             environment = OrtEnvironment.getEnvironment()
 
-            // Get model directory
-            val modelsDir = getModelDirectory()
+            // Get model path
+            val modelFile = getModelFile()
 
-            // Get paths to 3 models (FP16 versions for compatibility)
-            val visionEncoderPath = "$modelsDir/vision_encoder_fp16.onnx"
-            val embedTokensPath = "$modelsDir/embed_tokens_fp16.onnx"
-            val decoderPath = "$modelsDir/decoder_model_merged_fp16.onnx"
-
-            // Try acceleration backends in priority order for all 3 models
-            accelerationType = initializeWithAcceleration(visionEncoderPath, embedTokensPath, decoderPath)
+            // Try acceleration backends in priority order
+            accelerationType = initializeWithAcceleration(modelFile)
 
             Timber.i("✅ ONNX Runtime initialized with ${accelerationType.name}")
-            Timber.i("   - Vision Encoder: $visionEncoderPath")
-            Timber.i("   - Embed Tokens: $embedTokensPath")
-            Timber.i("   - Decoder: $decoderPath")
+            Timber.i("   - Model: $modelFile")
             Result.success(accelerationType)
 
         } catch (e: Exception) {
@@ -76,16 +65,12 @@ class ONNXModelWrapper(
 
     /**
      * Try different acceleration backends using file-based loading (memory-mapped)
-     * Loads all 3 Granite Docling models with same acceleration backend
+     * Priority: NNAPI (NPU) -> CPU
      */
-    private fun initializeWithAcceleration(
-        visionEncoderPath: String,
-        embedTokensPath: String,
-        decoderPath: String
-    ): AccelerationType {
+    private fun initializeWithAcceleration(modelPath: String): AccelerationType {
         val env = environment ?: throw IllegalStateException("Environment not initialized")
 
-        Timber.d("Loading 3-model pipeline...")
+        Timber.d("Loading Phi-3 model from: $modelPath")
 
         // Priority 1: Try NNAPI (NPU/TPU/DSP)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -98,23 +83,15 @@ class ONNXModelWrapper(
                 sessionOptions.setIntraOpNumThreads(4)
                 sessionOptions.setInterOpNumThreads(4)
 
-                // Load all 3 models with NNAPI
-                visionEncoderSession = env.createSession(visionEncoderPath, sessionOptions)
-                embedTokensSession = env.createSession(embedTokensPath, sessionOptions)
-                decoderSession = env.createSession(decoderPath, sessionOptions)
+                session = env.createSession(modelPath, sessionOptions)
 
-                Timber.i("🚀 NNAPI acceleration enabled for all 3 models")
+                Timber.i("🚀 NNAPI acceleration enabled")
                 return AccelerationType.NNAPI
 
             } catch (e: Exception) {
                 Timber.w("NNAPI failed, trying CPU: ${e.message}")
-                // Clean up any partially loaded sessions
-                visionEncoderSession?.close()
-                embedTokensSession?.close()
-                decoderSession?.close()
-                visionEncoderSession = null
-                embedTokensSession = null
-                decoderSession = null
+                session?.close()
+                session = null
             }
         } else {
             Timber.d("NNAPI requires Android 9+, current: ${Build.VERSION.SDK_INT}")
@@ -122,181 +99,97 @@ class ONNXModelWrapper(
 
         // Priority 2: CPU (always works)
         try {
-            Timber.d("Initializing CPU backend with memory-mapped files...")
+            Timber.d("Initializing CPU backend with memory-mapped file...")
 
             val sessionOptions = OrtSession.SessionOptions()
             sessionOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
             sessionOptions.setIntraOpNumThreads(4)  // Use multiple cores
             sessionOptions.setInterOpNumThreads(4)
 
-            // Load all 3 models with CPU
-            visionEncoderSession = env.createSession(visionEncoderPath, sessionOptions)
-            Timber.d("  ✓ Vision encoder loaded")
+            session = env.createSession(modelPath, sessionOptions)
+            Timber.d("  ✓ Phi-3 model loaded")
 
-            embedTokensSession = env.createSession(embedTokensPath, sessionOptions)
-            Timber.d("  ✓ Embed tokens loaded")
-
-            decoderSession = env.createSession(decoderPath, sessionOptions)
-            Timber.d("  ✓ Decoder loaded")
-
-            Timber.i("✅ CPU acceleration enabled for all 3 models")
+            Timber.i("✅ CPU acceleration enabled")
             return AccelerationType.CPU
 
         } catch (e: Exception) {
             Timber.e(e, "CPU initialization failed")
-            // Clean up
-            visionEncoderSession?.close()
-            embedTokensSession?.close()
-            decoderSession?.close()
+            session?.close()
             throw e
         }
     }
 
     /**
-     * Run document processing inference with image + text prompt
-     * 3-model pipeline:
-     * 1. Vision Encoder: [batch, num_images, 3, 512, 512] -> [batch, 64, 576]
-     * 2. Embed Tokens: [batch, seq_len] -> [batch, seq_len, 576]
-     * 3. Decoder: [batch, 64+seq_len, 576] -> [batch, seq_len, vocab_size]
+     * Run text inference without KV caching (simple greedy decoding)
+     * Input: token IDs, attention mask
+     * Output: logits for next token prediction
      */
-    fun runDocumentInference(
-        pixelValues: FloatArray,  // Pre-processed image [1, 1, 3, 512, 512]
-        pixelAttentionMask: BooleanArray,  // Attention mask [1, 1, 512, 512]
+    fun runInference(
         inputIds: LongArray,  // Token IDs [seq_len]
-        attentionMask: LongArray  // Text attention mask [seq_len]
+        attentionMask: LongArray  // Attention mask [seq_len]
     ): FloatArray {
-        val visionEncoder = visionEncoderSession ?: throw IllegalStateException("Vision encoder not initialized")
-        val embedTokens = embedTokensSession ?: throw IllegalStateException("Embed tokens not initialized")
-        val decoder = decoderSession ?: throw IllegalStateException("Decoder not initialized")
+        val ortSession = session ?: throw IllegalStateException("Model not initialized")
+        val env = environment ?: throw IllegalStateException("Environment not initialized")
 
         try {
-            val env = environment ?: throw IllegalStateException("Environment not initialized")
+            Timber.d("Running inference with input_ids length: ${inputIds.size}")
 
-            Timber.d("Running 3-model pipeline: image [1,1,3,512,512] + text [${inputIds.size}]")
-
-            // Step 1: Vision Encoder - Process image to get image features
-            Timber.d("  1/3 Running vision encoder...")
-            val pixelValuesTensor = OnnxTensor.createTensor(
-                env,
-                FloatBuffer.wrap(pixelValues),
-                longArrayOf(1, 1, 3, 512, 512)  // [batch, num_images, channels, height, width]
-            )
-
-            val pixelAttentionMaskTensor = OnnxTensor.createTensor(
-                env,
-                ByteBuffer.wrap(pixelAttentionMask.map { if (it) 1.toByte() else 0.toByte() }.toByteArray()),
-                longArrayOf(1, 1, 512, 512)  // [batch, num_images, height, width]
-            )
-
-            val visionOutputs = visionEncoder.run(mapOf(
-                "pixel_values" to pixelValuesTensor,
-                "pixel_attention_mask" to pixelAttentionMaskTensor
-            ))
-
-            val imageFeatures = (visionOutputs["image_features"] as? OnnxTensor)
-                ?: throw IllegalStateException("Vision encoder output missing")
-
-            val imageFeatureShape = imageFeatures.info.shape
-            Timber.d("    Image features shape: [${imageFeatureShape.joinToString(", ")}]")
-
-            // Step 2: Embed Tokens - Convert input_ids to embeddings
-            Timber.d("  2/3 Running embed tokens...")
+            // Create input tensors
             val inputIdsTensor = OnnxTensor.createTensor(
                 env,
                 LongBuffer.wrap(inputIds),
                 longArrayOf(1, inputIds.size.toLong())  // [batch, seq_len]
             )
 
-            val embedOutputs = embedTokens.run(mapOf(
-                "input_ids" to inputIdsTensor
-            ))
-
-            val inputsEmbeds = (embedOutputs["inputs_embeds"] as? OnnxTensor)
-                ?: throw IllegalStateException("Embed tokens output missing")
-
-            val embedShape = inputsEmbeds.info.shape
-            Timber.d("    Text embeddings shape: [${embedShape.joinToString(", ")}]")
-
-            // Step 3: Concatenate image features and text embeddings
-            // Image features: [1, 64, 576], Text embeds: [1, seq_len, 576]
-            // Combined: [1, 64 + seq_len, 576]
-            Timber.d("  3/3 Concatenating embeddings and running decoder...")
-            val imageFeatsArray = imageFeatures.floatBuffer.let {
-                val arr = FloatArray(it.remaining())
-                it.get(arr)
-                arr
-            }
-
-            val textEmbedsArray = inputsEmbeds.floatBuffer.let {
-                val arr = FloatArray(it.remaining())
-                it.get(arr)
-                arr
-            }
-
-            val combinedEmbeds = imageFeatsArray + textEmbedsArray
-            val combinedSeqLen = 64 + inputIds.size  // 64 image tokens + text tokens
-
-            val combinedEmbedsTensor = OnnxTensor.createTensor(
+            val attentionMaskTensor = OnnxTensor.createTensor(
                 env,
-                FloatBuffer.wrap(combinedEmbeds),
-                longArrayOf(1, combinedSeqLen.toLong(), 576)  // [batch, total_seq_len, hidden_size]
+                LongBuffer.wrap(attentionMask),
+                longArrayOf(1, attentionMask.size.toLong())  // [batch, seq_len]
             )
 
-            // Create combined attention mask [1, 64 + seq_len]
-            // All 1s for image tokens, then the text attention mask
-            val combinedAttentionMask = LongArray(combinedSeqLen) { if (it < 64) 1L else attentionMask[it - 64] }
-            val combinedAttentionMaskTensor = OnnxTensor.createTensor(
-                env,
-                LongBuffer.wrap(combinedAttentionMask),
-                longArrayOf(1, combinedSeqLen.toLong())
+            // Create inputs map
+            val inputs = mutableMapOf<String, OnnxTensor>(
+                "input_ids" to inputIdsTensor,
+                "attention_mask" to attentionMaskTensor
             )
 
-            // Create empty past_key_values (no KV caching for first pass)
-            val decoderInputs = mutableMapOf<String, OnnxTensor>(
-                "inputs_embeds" to combinedEmbedsTensor,
-                "attention_mask" to combinedAttentionMaskTensor
-            )
-
-            // Add empty past_key_values for 30 layers
-            for (i in 0 until 30) {
+            // Add empty past_key_values for 32 Phi-3 layers
+            // Shape: [batch, num_heads=32, past_seq_len=0, head_dim=96]
+            for (i in 0 until 32) {
                 val emptyKV = FloatArray(0)
-                decoderInputs["past_key_values.$i.key"] = OnnxTensor.createTensor(
+                inputs["past_key_values.$i.key"] = OnnxTensor.createTensor(
                     env,
                     FloatBuffer.wrap(emptyKV),
-                    longArrayOf(1, 3, 0, 64)  // [batch, num_heads, 0, head_dim]
+                    longArrayOf(1, 32, 0, 96)
                 )
-                decoderInputs["past_key_values.$i.value"] = OnnxTensor.createTensor(
+                inputs["past_key_values.$i.value"] = OnnxTensor.createTensor(
                     env,
                     FloatBuffer.wrap(emptyKV),
-                    longArrayOf(1, 3, 0, 64)
+                    longArrayOf(1, 32, 0, 96)
                 )
             }
 
-            val decoderOutputs = decoder.run(decoderInputs)
+            // Run inference
+            val outputs = ortSession.run(inputs)
 
             // Get logits output
-            val logits = (decoderOutputs["logits"] as? OnnxTensor)
-                ?: throw IllegalStateException("Decoder output missing")
+            val logits = (outputs["logits"] as? OnnxTensor)
+                ?: throw IllegalStateException("Logits output missing")
 
             val logitsBuffer = logits.floatBuffer
             val result = FloatArray(logitsBuffer.remaining())
             logitsBuffer.get(result)
 
-            Timber.d("Document inference complete, logits size: ${result.size}")
+            Timber.d("Inference complete, logits size: ${result.size}")
 
             // Clean up
-            pixelValuesTensor.close()
-            pixelAttentionMaskTensor.close()
-            visionOutputs.close()
-            inputIdsTensor.close()
-            embedOutputs.close()
-            decoderInputs.values.forEach { it.close() }
-            decoderOutputs.close()
+            inputs.values.forEach { it.close() }
+            outputs.close()
 
             return result
 
         } catch (e: Exception) {
-            Timber.e(e, "Document inference failed")
+            Timber.e(e, "Inference failed")
             throw e
         }
     }
@@ -330,11 +223,11 @@ class ONNXModelWrapper(
     }
 
     /**
-     * Get model directory for loading 3 ONNX files
-     * Priority: External storage (for large models) -> Assets (not supported for memory-mapping)
+     * Get model file path
+     * Priority: External storage (for large models) -> Assets
      */
-    private fun getModelDirectory(): String {
-        // Try external storage first (where we'll push the 3 Granite models)
+    private fun getModelFile(): String {
+        // Try external storage first (where we'll push Phi-3 model)
         val externalFilesDir = context.getExternalFilesDir(null)
         Timber.d("External files directory: $externalFilesDir")
 
@@ -342,49 +235,35 @@ class ONNXModelWrapper(
             java.io.File(it, "models")
         }
 
-        if (modelsDir != null) {
-            Timber.d("Checking for models directory at: ${modelsDir.absolutePath}")
-            Timber.d("Directory exists: ${modelsDir.exists()}")
+        if (modelsDir != null && modelsDir.exists()) {
+            // List files in models directory
+            val files = modelsDir.listFiles()
+            Timber.d("Files in models directory: ${files?.map { it.name }?.joinToString(", ") ?: "none"}")
 
-            if (modelsDir.exists()) {
-                // List files in models directory
-                val files = modelsDir.listFiles()
-                Timber.d("Files in models directory: ${files?.map { it.name }?.joinToString(", ") ?: "none"}")
+            // Look for Phi-3 model file
+            val phi3Model = java.io.File(modelsDir, "phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx")
 
-                // Check if all 3 required models exist (FP16 versions)
-                val visionEncoder = java.io.File(modelsDir, "vision_encoder_fp16.onnx")
-                val embedTokens = java.io.File(modelsDir, "embed_tokens_fp16.onnx")
-                val decoder = java.io.File(modelsDir, "decoder_model_merged_fp16.onnx")
-
-                if (visionEncoder.exists() && embedTokens.exists() && decoder.exists()) {
-                    val totalSize = (visionEncoder.length() + embedTokens.length() + decoder.length()) / (1024 * 1024)
-                    Timber.i("Found all 3 Granite Docling models in external storage (~${totalSize}MB total)")
-                    return modelsDir.absolutePath
-                } else {
-                    Timber.w("Missing models: " +
-                            "vision_encoder=${visionEncoder.exists()}, " +
-                            "embed_tokens=${embedTokens.exists()}, " +
-                            "decoder=${decoder.exists()}")
-                }
+            if (phi3Model.exists()) {
+                val sizeMB = phi3Model.length() / (1024 * 1024)
+                Timber.i("Found Phi-3 model in external storage (~${sizeMB}MB)")
+                return phi3Model.absolutePath
+            } else {
+                Timber.w("Phi-3 model not found: ${phi3Model.name}")
             }
         } else {
-            Timber.w("External files directory is null")
+            Timber.w("Models directory not found or doesn't exist")
         }
 
         throw IllegalStateException(
-            "Model files not found in external storage. Expected 3 models at: " +
-                    "${context.getExternalFilesDir(null)}/models/\n" +
-                    "- vision_encoder_fp16.onnx\n" +
-                    "- embed_tokens_fp16.onnx\n" +
-                    "- decoder_model_merged_fp16.onnx"
+            "Phi-3 model file not found in external storage. Expected at: " +
+                    "${context.getExternalFilesDir(null)}/models/phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx"
         )
     }
 
     /**
-     * Check if all 3 models are loaded
+     * Check if model is loaded
      */
-    fun isLoaded(): Boolean =
-        visionEncoderSession != null && embedTokensSession != null && decoderSession != null
+    fun isLoaded(): Boolean = session != null
 
     /**
      * Get acceleration type
@@ -392,25 +271,15 @@ class ONNXModelWrapper(
     fun getAccelerationType(): AccelerationType = accelerationType
 
     /**
-     * Clean up resources for all 3 models
+     * Clean up resources
      */
     fun close() {
         try {
-            visionEncoderSession?.close()
-            visionEncoderSession = null
-            Timber.d("Vision encoder session closed")
-
-            embedTokensSession?.close()
-            embedTokensSession = null
-            Timber.d("Embed tokens session closed")
-
-            decoderSession?.close()
-            decoderSession = null
-            Timber.d("Decoder session closed")
-
-            Timber.i("All ONNX sessions closed")
+            session?.close()
+            session = null
+            Timber.i("ONNX session closed")
         } catch (e: Exception) {
-            Timber.e(e, "Error closing sessions")
+            Timber.e(e, "Error closing session")
         }
     }
 
