@@ -203,7 +203,8 @@ class Phi3BPETokenizer(private val context: Context) {
         }
 
         // Replace SentencePiece space marker with actual spaces
-        return decoded.toString().replace("▁", " ").trim()
+        // Don't trim() - it removes newlines/whitespace which breaks streaming
+        return decoded.toString().replace("▁", " ")
     }
 
     /**

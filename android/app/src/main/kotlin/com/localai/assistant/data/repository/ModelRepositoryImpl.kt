@@ -89,6 +89,9 @@ class ModelRepositoryImpl @Inject constructor(
 
             // Step 1: Format prompt with Phi-3 chat template
             val formattedPrompt = buildString {
+                append("<|system|>\n")
+                append("You are a helpful AI assistant. Answer questions accurately and concisely.")
+                append("<|end|>\n")
                 append("<|user|>\n")
                 append(request.prompt)
                 append("<|end|>\n")
