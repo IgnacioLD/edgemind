@@ -172,9 +172,15 @@ class ONNXModelWrapper(
             // Run inference
             val outputs = ortSession.run(inputs)
 
-            // Get logits output
-            val logits = (outputs["logits"] as? OnnxTensor)
-                ?: throw IllegalStateException("Logits output missing")
+            // Debug: Log all output names
+            Timber.d("Model outputs: ${outputs.map { it.key }.joinToString(", ")}")
+
+            // Get logits output - OrtSession.Result.get() returns Optional<OnnxValue>
+            val logitsValue = outputs.get("logits").orElse(null)
+            Timber.d("Logits value type: ${logitsValue?.javaClass?.simpleName}")
+
+            val logits = (logitsValue as? OnnxTensor)
+                ?: throw IllegalStateException("Logits output missing. Available outputs: ${outputs.map { it.key }}")
 
             val logitsBuffer = logits.floatBuffer
             val result = FloatArray(logitsBuffer.remaining())
