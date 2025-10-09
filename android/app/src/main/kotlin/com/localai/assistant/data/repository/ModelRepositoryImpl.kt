@@ -3,7 +3,7 @@ package com.localai.assistant.data.repository
 import ai.onnxruntime.OnnxTensor
 import android.content.Context
 import com.localai.assistant.data.local.ONNXModelWrapper
-import com.localai.assistant.data.local.SimpleTokenizer
+import com.localai.assistant.data.local.Phi3BPETokenizer
 import com.localai.assistant.domain.model.InferenceRequest
 import com.localai.assistant.domain.model.InferenceResult
 import com.localai.assistant.domain.model.ModelType
@@ -35,7 +35,7 @@ class ModelRepositoryImpl @Inject constructor(
     }
 
     private val models = mutableMapOf<ModelType, ONNXModelWrapper>()
-    private val tokenizer = SimpleTokenizer(context)
+    private val tokenizer = Phi3BPETokenizer(context)
 
     override suspend fun initializeModel(modelType: ModelType): Result<Unit> = withContext(Dispatchers.IO) {
         try {
@@ -87,10 +87,18 @@ class ModelRepositoryImpl @Inject constructor(
 
             val startTime = System.currentTimeMillis()
 
-            // Step 1: Tokenize text prompt
+            // Step 1: Format prompt with Phi-3 chat template
+            val formattedPrompt = buildString {
+                append("<|user|>\n")
+                append(request.prompt)
+                append("<|end|>\n")
+                append("<|assistant|>\n")
+            }
+
+            // Step 2: Tokenize formatted prompt
             Timber.d("Tokenizing prompt: ${request.prompt.take(50)}...")
             val tokenized = tokenizer.encode(
-                text = request.prompt,
+                text = formattedPrompt,
                 addSpecialTokens = true,
                 maxLength = 4096  // Phi-3 supports 4k context
             )
