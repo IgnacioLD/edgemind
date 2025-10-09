@@ -1,179 +1,249 @@
-# Local LLM Android Auto
+# EdgeMind
 
-**Status:** 🚧 In Development
-**Goal:** Local voice assistant for Android Auto using on-device LLMs
-**Tech:** Whisper (STT), Llama 3.2 (LLM), Kokoro/Pico (TTS), Android Auto APIs
+**On-Device AI Assistant for Android**
 
----
-
-## 🎯 Project Overview
-
-Privacy-first voice assistant for Android Auto that runs **100% locally** - no cloud, no data transmission.
-
-### Key Features (Planned)
-- 🎤 Speech-to-Text with Whisper Tiny (39MB local)
-- 🤖 LLM processing with Llama 3.2 1B (mobile-optimized)
-- 🔊 Text-to-Speech with Kokoro 82M or Pico TTS
-- 🚗 Android Auto integration for car controls
-- 🔒 Complete privacy - all processing on-device
+**Status:** Functional - Chat with Phi-3 mini working
+**Current:** Edge LLM inference with Phi-3 mini (3.8B INT4)
+**Tech:** ONNX Runtime, NNAPI Acceleration, Custom BPE Tokenizer
 
 ---
 
-## 🛠️ Tech Stack
+## Project Overview
 
-### GenAI Components
-- **STT:** Whisper Tiny (TensorFlow Lite)
-- **LLM:** Llama 3.2 1B via picoLLM SDK
-- **TTS:** Kokoro 82M or Android Pico TTS
-- **Framework:** Framework-agnostic (raw models for flexibility)
+Privacy-first AI assistant running **100% locally** on Android devices - no cloud, no data transmission.
 
-### MLOps Components
-- **Model Optimization:** INT8/FP16 quantization for mobile
-- **Deployment:** TensorFlow Lite + ONNX Runtime
-- **Performance:** Battery optimization, inference profiling
-- **Monitoring:** On-device metrics, crash reporting
+### Current Features
+- **Phi-3 mini 3.8B** (INT4 quantized to 2.6GB)
+- **NNAPI Hardware Acceleration** (NPU/TPU/DSP)
+- **KV Cache** for fast text generation (~120-200ms/token)
+- **Custom SentencePiece BPE Tokenizer** (32k vocab)
+- **Streaming Chat** with real-time token generation
+- **Clean Architecture** (MVVM + Domain/Data layers)
+- **Smart Stopping** (n-gram detection, sentence completion)
+
+---
+
+## Tech Stack
+
+### AI/ML
+- **Model:** Phi-3 mini 3.8B (INT4 quantized, 2.6GB)
+- **Runtime:** ONNX Runtime 1.19.2 with IR version 7
+- **Acceleration:** NNAPI (NPU/TPU/DSP), CPU fallback
+- **Tokenizer:** Custom SentencePiece BPE implementation (32,064 vocab)
+- **Optimization:** KV cache for O(n) generation, memory-mapped loading
 
 ### Android
-- **Language:** Kotlin (primary), Java
-- **Architecture:** MVVM + Clean Architecture
-- **APIs:** Android Auto Voice Interaction, CarPropertyManager
-- **Base:** Fork of Dicio Android for voice handling
+- **Language:** Kotlin 1.9.20
+- **Min SDK:** 26 (Android 8.0) / Target SDK: 34 (Android 14)
+- **Architecture:** Clean Architecture (Domain/Data/Presentation)
+- **Pattern:** MVVM with StateFlow
+- **DI:** Hilt 2.48
+- **UI:** Jetpack Compose + Material 3
+- **Async:** Coroutines + Flow for streaming
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
-local-llm-android-auto/
-├── app/                    # Android application
-│   ├── src/main/
-│   │   ├── kotlin/
-│   │   │   ├── stt/       # Speech-to-Text module
-│   │   │   ├── llm/       # LLM inference module
-│   │   │   ├── tts/       # Text-to-Speech module
-│   │   │   ├── auto/      # Android Auto integration
-│   │   │   └── commands/  # Voice command handlers
-│   │   └── assets/
-│   │       └── models/    # ML models (quantized)
-├── ml/                     # ML model preparation (Python)
-│   ├── whisper/           # Whisper model testing & quantization
-│   ├── llama/             # Llama model prep & optimization
-│   ├── tts/               # TTS model testing
-│   └── notebooks/         # Jupyter notebooks for experiments
-├── docs/                   # Documentation
-│   ├── architecture.md    # System architecture
-│   ├── mlops.md          # MLOps considerations
-│   └── android-auto.md   # Android Auto integration guide
-└── scripts/               # Build & deployment scripts
+edgemind/
+├── android/                         # Android application
+│   ├── app/src/main/kotlin/com/localai/assistant/
+│   │   ├── domain/                 # Business logic (Clean Architecture)
+│   │   │   ├── model/              # Domain models
+│   │   │   ├── repository/         # Repository interfaces
+│   │   │   └── usecase/            # Use cases
+│   │   ├── data/                   # Data layer
+│   │   │   ├── local/              # Local data sources
+│   │   │   │   ├── ONNXModelWrapper.kt      # ONNX Runtime wrapper
+│   │   │   │   └── Phi3BPETokenizer.kt      # SentencePiece tokenizer
+│   │   │   └── repository/         # Repository implementations
+│   │   │       └── ModelRepositoryImpl.kt   # Main inference logic
+│   │   ├── presentation/           # UI layer (MVVM)
+│   │   │   └── chat/               # Chat screen with Compose
+│   │   └── di/                     # Hilt dependency injection
+│   └── app/src/main/assets/
+│       └── tokenizer.json          # Phi-3 tokenizer config (3.5MB)
+├── ml/                             # Model experiments & preparation
+│   └── granite/                    # Model testing & conversion
+└── INFERENCE_FINDINGS.md           # Performance analysis & debugging
 ```
 
 ---
 
-## 🚀 Development Phases
+## Development Status
 
-### Phase 1: ML Pipeline (Python) - **CURRENT**
-- [ ] Test Whisper Tiny locally
-- [ ] Test Llama 3.2 1B locally
-- [ ] Test TTS options (Kokoro vs Pico)
-- [ ] Quantize models for mobile (INT8)
-- [ ] Benchmark inference performance
+### Phase 1: Core Inference (COMPLETED)
+- Phi-3 mini INT4 model integration (2.6GB)
+- ONNX Runtime 1.19.2 with NNAPI acceleration
+- Custom SentencePiece BPE tokenizer (32k vocab)
+- KV cache implementation (O(n) generation)
+- Streaming chat with real-time tokens
+- Memory-mapped model loading
+- Clean Architecture (Domain/Data/Presentation)
+- Smart stopping criteria (n-gram detection)
 
-### Phase 2: Android App Foundation
-- [ ] Fork Dicio Android
-- [ ] Set up Kotlin project structure
-- [ ] Integrate TFLite for Whisper
-- [ ] Integrate picoLLM SDK for Llama
-- [ ] Add TTS integration
+### Phase 2: Optimization (IN PROGRESS)
+- NNAPI NPU acceleration (~120-200ms/token)
+- KV cache memory management
+- Repetition detection & early stopping
+- Temperature/top-p sampling (currently greedy)
+- Prompt caching for faster repeated queries
+- Battery optimization profiling
 
-### Phase 3: Android Auto Integration
+### Phase 3: Features (PLANNED)
+- [ ] Conversation history persistence (Room DB)
+- [ ] Multiple chat sessions
+- [ ] System prompt customization
+- [ ] Model parameter tuning (temperature, top-p)
+- [ ] Export/import conversations
+- [ ] Settings UI for performance tuning
+
+### Phase 4: Android Auto (FUTURE)
 - [ ] Android Auto manifest & permissions
 - [ ] Voice Interaction Session
-- [ ] CarPropertyManager for vehicle controls
+- [ ] Speech-to-Text integration (Whisper)
+- [ ] Text-to-Speech integration
 - [ ] Car-optimized UI
 
-### Phase 4: MLOps & Optimization
-- [ ] Battery usage optimization
-- [ ] Inference profiling & optimization
-- [ ] Model versioning strategy
-- [ ] Performance monitoring
-
 ---
 
-## 🧪 ML Experimentation (Start Here)
+## Building & Running
 
-### Setup Python Environment
+### Prerequisites
+1. **Phi-3 Model:** Download Phi-3 mini INT4 ONNX model (2.6GB)
+   ```bash
+   # Download from HuggingFace
+   wget https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/resolve/main/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx
+
+   # Push to device
+   adb push phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx /sdcard/Android/data/com.localai.assistant/files/models/
+   ```
+
+2. **Android Studio:** Arctic Fox or newer with Kotlin 1.9.20
+
+### Build & Install
 ```bash
-cd ml
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+cd android
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-### Test Models Locally
+### Development
 ```bash
-# Test Whisper STT
-python whisper/test_whisper.py
+# Run tests
+./gradlew test
 
-# Test Llama 3.2
-python llama/test_llama.py
-
-# Test TTS
-python tts/test_tts.py
+# Check logs
+adb logcat | grep -i "localai\|onnx\|phi3"
 ```
 
 ---
 
-## 📊 GenAI + MLOps Focus
+## Technical Highlights
 
-### Why This Project Showcases Both:
+### GenAI Expertise
+- **LLM Integration:** Phi-3 mini (3.8B parameters) on Android
+- **Custom Tokenizer:** Implemented SentencePiece BPE from scratch (32k vocab, 61k merges)
+- **Streaming Generation:** Real-time token emission via Kotlin Flow
+- **Prompt Engineering:** Chat templates with system/user/assistant roles
+- **Smart Stopping:** N-gram repetition detection, sentence completion
 
-**GenAI:**
-- LLM integration (Llama 3.2)
-- Prompt engineering for car commands
-- Multi-modal AI (speech → text → LLM → speech)
-- Framework-agnostic approach (raw models)
+### MLOps Expertise
+- **Edge Deployment:** 100% on-device inference with no cloud
+- **Hardware Acceleration:** NNAPI (NPU/TPU/DSP) integration
+- **Performance Optimization:** KV cache reduces complexity from O(n²) to O(n)
+- **Memory Management:** Memory-mapped loading, cache cleanup, OOM prevention
+- **Quantization:** INT4 model (3.8B params in 2.6GB)
+- **Monitoring:** Timber logging, inference profiling, crash analysis
 
-**MLOps:**
-- Edge computing / mobile deployment
-- Model quantization (INT8/FP16)
-- Performance optimization (latency, battery)
-- On-device inference pipeline
-- Model versioning & updates
-
----
-
-## 🎯 Portfolio Value
-
-This project demonstrates:
-- ✅ GenAI expertise (LLM, STT, TTS integration)
-- ✅ MLOps expertise (edge deployment, optimization)
-- ✅ Android development (Kotlin, Android Auto)
-- ✅ FROM SCRATCH approach (with strategic forking)
-- ✅ Framework-agnostic engineering
-- ✅ Production considerations (battery, performance)
-
-**Target companies:** Microsoft, N26, Datadog, product companies with AI/ML teams
+### Software Engineering
+- **Clean Architecture:** Domain/Data/Presentation separation
+- **MVVM Pattern:** ViewModel + StateFlow for reactive UI
+- **Dependency Injection:** Hilt with proper scoping
+- **Async Programming:** Coroutines + Flow for streaming
+- **Error Handling:** Result types, graceful fallbacks
+- **Testing Infrastructure:** Unit tests with MockK/Truth/Turbine
 
 ---
 
-## 📝 Development Log
+## Portfolio Value
 
-**2025-10-09:** Project initialized, renamed to `local-llm-android-auto`
-- Starting with ML pipeline in Python (test models locally first)
-- Android integration comes after ML pipeline is validated
+**What This Project Demonstrates:**
+
+1. **Deep AI/ML Understanding**
+   - Built tokenizer from scratch (not just using libraries)
+   - Implemented KV caching manually
+   - Debugged model outputs, logits, attention masks
+   - Optimized inference pipeline from 5s+ to 120ms per token
+
+2. **Production-Grade Engineering**
+   - Clean Architecture (testable, maintainable, scalable)
+   - Memory leak debugging and fixes
+   - Performance profiling and optimization
+   - Real-world constraints (mobile hardware, battery life)
+
+3. **Problem-Solving Skills**
+   - Diagnosed tokenizer mismatch (99 vs 32k vocab)
+   - Identified and fixed KV cache memory leak
+   - Implemented repetition detection for quality
+   - Iterative debugging with logcat analysis
+
+4. **Full-Stack Mobile Development**
+   - Kotlin expertise (coroutines, flows, extension functions)
+   - Jetpack Compose UI
+   - ONNX Runtime integration
+   - Android hardware acceleration (NNAPI)
+
+**Ideal For:** Senior AI Engineer, ML Engineer, or Android ML Engineer roles at companies building edge AI products.
 
 ---
 
-## 🔗 Resources
+## Performance Benchmarks
 
-- [Dicio Android](https://github.com/Stypox/dicio-android) - FOSS voice assistant
-- [Whisper Android](https://github.com/vilassn/whisper_android) - TFLite Whisper
-- [picoLLM](https://picovoice.ai/blog/local-llm-for-mobile-run-llama-2-and-llama-3-on-android/) - Mobile LLM SDK
-- [Llama 3.2](https://ai.meta.com/blog/llama-3-2-connect-2024-vision-edge-mobile-devices/) - Mobile-optimized models
+**Device:** Samsung Galaxy S22 (Exynos 2200)
+**Acceleration:** NNAPI (NPU)
+**Model:** Phi-3 mini INT4 (2.6GB)
+
+### Generation Speed
+- **First token:** ~200ms (with cache initialization)
+- **Subsequent tokens:** 120-200ms (KV cache reuse)
+- **Avg speed:** ~5-8 tokens/second
+- **Context window:** 4096 tokens
+
+### Memory Usage
+- **Model loading:** 2.6GB (memory-mapped, not in RAM)
+- **Runtime memory:** ~500MB (includes KV cache)
+- **KV cache size:** 64 tensors (32 layers × 2)
+
+### Before vs After Optimization
+- **Without KV cache:** 800ms → 5s+ (exponential slowdown)
+- **With KV cache:** 120-200ms (consistent)
+- **Speedup:** 6x faster generation
 
 ---
 
-## 📧 Contact
+## Documentation
+
+See `INFERENCE_FINDINGS.md` for detailed implementation notes, debugging process, and performance analysis.
+
+---
+
+## Resources
+
+- [Phi-3 Model](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx) - Microsoft's small language model
+- [ONNX Runtime](https://onnxruntime.ai/) - Cross-platform inference engine
+- [NNAPI](https://developer.android.com/ndk/guides/neuralnetworks) - Android Neural Networks API
+
+---
+
+## License
+
+MIT License - See LICENSE file for details
+
+---
+
+## Author
 
 **Ignacio Loyola Delgado**
 GenAI & MLOps Engineer
@@ -181,4 +251,4 @@ GenAI & MLOps Engineer
 
 ---
 
-*Built with privacy-first principles. All processing happens on-device. Zero data transmission.*
+*Privacy-first design. All processing happens on-device. Zero data transmission.*
