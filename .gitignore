@@ -1,0 +1,55 @@
+# ONNX Model Files
+*.onnx
+*.onnx_data
+
+# Python virtual environment
+ml/venv/
+ml/*/venv/
+
+# Model directories
+ml/*/models/
+android/app/src/main/assets/models/
+
+# Android build outputs
+android/.gradle/
+android/build/
+android/app/build/
+android/*/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,23 @@
+# Core ML frameworks
+torch>=2.0.0
+transformers>=4.30.0
+
+# Document processing
+docling>=2.0.0
+pypdf>=3.0.0
+pillow>=10.0.0
+
+# Model conversion & optimization
+onnx>=1.14.0
+onnxruntime>=1.15.0
+tensorflow>=2.13.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Development tools
+jupyter>=1.0.0
+pytest>=7.4.0
+rich>=13.0.0
+tqdm>=4.65.0
