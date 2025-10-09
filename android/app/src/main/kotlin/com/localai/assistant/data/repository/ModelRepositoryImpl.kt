@@ -107,8 +107,8 @@ class ModelRepositoryImpl @Inject constructor(
             // Step 2: Autoregressive generation loop WITH KV CACHE
             Timber.d("Starting text generation with KV cache on ${model.getAccelerationType().name}...")
 
-            val maxNewTokens = 50  // Now we can generate 50 tokens quickly!
-            val vocabSize = tokenizer.getVocabSize()  // SimpleTokenizer vocab
+            val maxNewTokens = 200  // Generate up to 200 tokens (~150 words)
+            val vocabSize = tokenizer.getVocabSize()
             val generatedTokens = mutableListOf<Long>()
             var kvCache: Map<String, OnnxTensor>? = null  // KV cache from previous iteration
             val fullAttentionMask = tokenized.attentionMask.toMutableList()
@@ -160,9 +160,9 @@ class ModelRepositoryImpl @Inject constructor(
                     )
                 )
 
-                // Check for EOS token (token ID 2 is common for EOS)
-                if (nextTokenId == 2 || nextTokenId == 0) {
-                    Timber.d("EOS token detected, stopping generation")
+                // Check for Phi-3 EOS tokens: </s>=2, <|endoftext|>=32000, <|end|>=32007
+                if (nextTokenId == 2 || nextTokenId == 32000 || nextTokenId == 32007) {
+                    Timber.d("EOS token detected (ID=$nextTokenId), stopping generation")
                     break
                 }
 
