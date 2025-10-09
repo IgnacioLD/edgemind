@@ -120,6 +120,116 @@ class ONNXModelWrapper(
     }
 
     /**
+     * Result from inference with KV cache
+     */
+    data class InferenceWithCacheResult(
+        val logits: FloatArray,
+        val presentKeyValues: Map<String, OnnxTensor>  // Cache for next iteration
+    )
+
+    /**
+     * Run text inference WITH KV caching (fast autoregressive generation)
+     * Input: token IDs, attention mask, optional past KV cache
+     * Output: logits + present KV cache for next iteration
+     */
+    fun runInferenceWithCache(
+        inputIds: LongArray,  // Token IDs [seq_len]
+        attentionMask: LongArray,  // Attention mask [total_seq_len]
+        pastKeyValues: Map<String, OnnxTensor>? = null  // Cache from previous step
+    ): InferenceWithCacheResult {
+        val ortSession = session ?: throw IllegalStateException("Model not initialized")
+        val env = environment ?: throw IllegalStateException("Environment not initialized")
+
+        try {
+            Timber.d("Running inference with cache: input_ids=${inputIds.size}, has_cache=${pastKeyValues != null}")
+
+            // Create input tensors
+            val inputIdsTensor = OnnxTensor.createTensor(
+                env,
+                LongBuffer.wrap(inputIds),
+                longArrayOf(1, inputIds.size.toLong())  // [batch, seq_len]
+            )
+
+            val attentionMaskTensor = OnnxTensor.createTensor(
+                env,
+                LongBuffer.wrap(attentionMask),
+                longArrayOf(1, attentionMask.size.toLong())  // [batch, total_seq_len]
+            )
+
+            // Create inputs map
+            val inputs = mutableMapOf<String, OnnxTensor>(
+                "input_ids" to inputIdsTensor,
+                "attention_mask" to attentionMaskTensor
+            )
+
+            // Add past_key_values (either from cache or empty for first iteration)
+            if (pastKeyValues != null) {
+                // Reuse cached KV from previous iteration
+                inputs.putAll(pastKeyValues)
+            } else {
+                // First iteration: empty KV cache
+                for (i in 0 until 32) {
+                    val emptyKV = FloatArray(0)
+                    inputs["past_key_values.$i.key"] = OnnxTensor.createTensor(
+                        env,
+                        FloatBuffer.wrap(emptyKV),
+                        longArrayOf(1, 32, 0, 96)
+                    )
+                    inputs["past_key_values.$i.value"] = OnnxTensor.createTensor(
+                        env,
+                        FloatBuffer.wrap(emptyKV),
+                        longArrayOf(1, 32, 0, 96)
+                    )
+                }
+            }
+
+            // Run inference
+            val outputs = ortSession.run(inputs)
+
+            // Get logits output
+            val logitsValue = outputs.get("logits").orElse(null)
+            val logits = (logitsValue as? OnnxTensor)
+                ?: throw IllegalStateException("Logits output missing")
+
+            val logitsBuffer = logits.floatBuffer
+            val result = FloatArray(logitsBuffer.remaining())
+            logitsBuffer.get(result)
+
+            // Extract present_key_values for next iteration
+            val presentKeyValues = mutableMapOf<String, OnnxTensor>()
+            for (i in 0 until 32) {
+                val presentKey = outputs.get("present.$i.key").orElse(null) as? OnnxTensor
+                val presentValue = outputs.get("present.$i.value").orElse(null) as? OnnxTensor
+
+                if (presentKey != null && presentValue != null) {
+                    // Rename present.X to past_key_values.X for next iteration
+                    presentKeyValues["past_key_values.$i.key"] = presentKey
+                    presentKeyValues["past_key_values.$i.value"] = presentValue
+                }
+            }
+
+            Timber.d("Inference complete: logits=${result.size}, cached_layers=${presentKeyValues.size/2}")
+
+            // Clean up input tensors only (keep present for caching)
+            inputIdsTensor.close()
+            attentionMaskTensor.close()
+            if (pastKeyValues == null) {
+                // Close the empty KV tensors we created
+                for (i in 0 until 32) {
+                    inputs["past_key_values.$i.key"]?.close()
+                    inputs["past_key_values.$i.value"]?.close()
+                }
+            }
+
+            return InferenceWithCacheResult(result, presentKeyValues)
+
+        } catch (e: Exception) {
+            Timber.e(e, "Inference with cache failed")
+            throw e
+        }
+    }
+
+    /**
      * Run text inference without KV caching (simple greedy decoding)
      * Input: token IDs, attention mask
      * Output: logits for next token prediction

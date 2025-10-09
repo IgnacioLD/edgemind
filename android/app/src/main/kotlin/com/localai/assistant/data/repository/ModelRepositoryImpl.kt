@@ -1,5 +1,6 @@
 package com.localai.assistant.data.repository
 
+import ai.onnxruntime.OnnxTensor
 import android.content.Context
 import com.localai.assistant.data.local.ONNXModelWrapper
 import com.localai.assistant.data.local.SimpleTokenizer
@@ -95,34 +96,45 @@ class ModelRepositoryImpl @Inject constructor(
             )
             Timber.d("Token IDs: ${tokenized.inputIds.take(10).joinToString(", ")}... (${tokenized.inputIds.size} tokens)")
 
-            // Step 2: Autoregressive generation loop
-            Timber.d("Starting text generation on ${model.getAccelerationType().name}...")
+            // Step 2: Autoregressive generation loop WITH KV CACHE
+            Timber.d("Starting text generation with KV cache on ${model.getAccelerationType().name}...")
 
-            val maxNewTokens = 10  // Limited to 10 tokens (no KV cache = slow)
-            val vocabSize = 32064  // Phi-3 actual vocab size
+            val maxNewTokens = 50  // Now we can generate 50 tokens quickly!
+            val vocabSize = tokenizer.getVocabSize()  // SimpleTokenizer vocab
             val generatedTokens = mutableListOf<Long>()
-            var currentInputIds = tokenized.inputIds.toMutableList()
-            var currentAttentionMask = tokenized.attentionMask.toMutableList()
+            var kvCache: Map<String, OnnxTensor>? = null  // KV cache from previous iteration
+            val fullAttentionMask = tokenized.attentionMask.toMutableList()
 
             // Generate tokens one by one
             for (i in 0 until maxNewTokens) {
-                // Run inference
-                val logits = model.runInference(
-                    inputIds = currentInputIds.toLongArray(),
-                    attentionMask = currentAttentionMask.toLongArray()
+                // For first iteration: process all input tokens
+                // For subsequent: only process the NEW token (cache reused!)
+                val inputIds = if (i == 0) {
+                    tokenized.inputIds  // First: process full prompt
+                } else {
+                    longArrayOf(generatedTokens.last())  // Subsequent: only new token
+                }
+
+                // Run inference WITH KV cache
+                val result = model.runInferenceWithCache(
+                    inputIds = inputIds,
+                    attentionMask = fullAttentionMask.toLongArray(),
+                    pastKeyValues = kvCache  // Reuse cache from previous iteration
                 )
 
+                // Update cache for next iteration
+                kvCache = result.presentKeyValues
+
                 // Get logits for the last position
-                val seqLen = currentInputIds.size
-                val lastTokenLogits = if (logits.size >= vocabSize) {
-                    val startIdx = (seqLen - 1) * vocabSize
-                    if (startIdx + vocabSize <= logits.size) {
-                        logits.sliceArray(startIdx until startIdx + vocabSize)
+                val lastTokenLogits = if (result.logits.size >= vocabSize) {
+                    val startIdx = (inputIds.size - 1) * vocabSize
+                    if (startIdx + vocabSize <= result.logits.size) {
+                        result.logits.sliceArray(startIdx until startIdx + vocabSize)
                     } else {
-                        logits.sliceArray(logits.size - vocabSize until logits.size)
+                        result.logits.sliceArray(result.logits.size - vocabSize until result.logits.size)
                     }
                 } else {
-                    logits
+                    result.logits
                 }
 
                 // Greedy sampling: pick token with highest probability
@@ -131,7 +143,7 @@ class ModelRepositoryImpl @Inject constructor(
 
                 // Decode and emit the new token (streaming)
                 val tokenText = tokenizer.decode(longArrayOf(nextTokenId.toLong()), skipSpecialTokens = true)
-                Timber.d("Generated token $i: ID=$nextTokenId, text='$tokenText'")
+                Timber.d("Generated token $i: ID=$nextTokenId, text='$tokenText' (cached=${i > 0})")
 
                 emit(
                     InferenceResult.Streaming(
@@ -146,16 +158,18 @@ class ModelRepositoryImpl @Inject constructor(
                     break
                 }
 
-                // Append new token to input for next iteration
-                currentInputIds.add(nextTokenId.toLong())
-                currentAttentionMask.add(1L)
+                // Extend attention mask for next iteration
+                fullAttentionMask.add(1L)
 
                 // Stop if sequence gets too long
-                if (currentInputIds.size > 512) {
+                if (fullAttentionMask.size > 512) {
                     Timber.d("Max sequence length reached, stopping")
                     break
                 }
             }
+
+            // Clean up KV cache
+            kvCache?.values?.forEach { it.close() }
 
             val inferenceTime = System.currentTimeMillis() - startTime
 
