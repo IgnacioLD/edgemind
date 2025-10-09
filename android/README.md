@@ -1,6 +1,6 @@
-# Local AI Assistant - Android App
+# EdgeMind - Android App
 
-Privacy-first AI assistant running 100% on-device. Built with Clean Architecture, MVVM, and industry best practices.
+On-device AI assistant with Phi-3 mini (3.8B INT4). Built with Clean Architecture, MVVM, and production-grade practices.
 
 ## Architecture
 
@@ -50,11 +50,11 @@ app/
 - **Serialization:** Kotlinx Serialization
 
 ### ML
-- **Framework:** TensorFlow Lite 2.14.0
-- **Acceleration:** GPU Delegate, NNAPI
-- **Models:**
-  - Phi-3-mini 3.8B (text, INT4) - ~2GB
-  - Granite Docling 258M (vision, INT4) - ~358MB
+- **Framework:** ONNX Runtime 1.19.2 with IR version 7
+- **Acceleration:** NNAPI (NPU/TPU/DSP), CPU fallback
+- **Model:** Phi-3 mini 3.8B (INT4, 2.6GB)
+- **Tokenizer:** Custom SentencePiece BPE (32,064 vocab)
+- **Optimization:** KV cache for O(n) generation, memory-mapped loading
 
 ### Quality
 - **Logging:** Timber
@@ -63,11 +63,12 @@ app/
 
 ## Key Features
 
-### Multi-Model Architecture
-- **Intent Router:** Automatically routes queries to appropriate model
-- **Text Model:** Phi-3-mini for general Q&A and conversation
-- **Vision Model:** Granite Docling for document understanding
-- **Lazy Loading:** Models loaded on-demand to save memory
+### Core Capabilities
+- **Phi-3 mini 3.8B:** Microsoft's small language model (INT4 quantized)
+- **NNAPI Acceleration:** Hardware NPU/TPU/DSP support for fast inference
+- **Streaming Chat:** Real-time token generation via Kotlin Flow
+- **Smart Stopping:** N-gram repetition detection, adaptive token limits
+- **KV Cache:** 6x faster generation with O(n) complexity
 
 ### Clean Architecture Benefits
 - **Testable:** Business logic independent of framework
@@ -175,11 +176,19 @@ Tests located in `src/androidTest/`:
 - ✅ Flow for backpressure
 - ✅ R8 optimization
 
-## Models (Not Included)
+## Model Setup
 
-Place TFLite models in `src/main/assets/models/`:
-- `phi3_mini_int4.tflite` (~2GB)
-- `granite_docling_int4.tflite` (~358MB)
+### Download Phi-3 Model
+```bash
+# Download from HuggingFace (2.6GB)
+wget https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/resolve/main/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx
+
+# Push to device
+adb push phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx /sdcard/Android/data/com.localai.assistant/files/models/
+```
+
+### Tokenizer
+The SentencePiece BPE tokenizer configuration (`tokenizer.json`) is included in `src/main/assets/` (3.5MB)
 
 ## License
 
