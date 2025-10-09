@@ -188,11 +188,22 @@ class Phi3BPETokenizer(private val context: Context) {
      * Decode SentencePiece BPE tokens back to text
      */
     private fun decodeTokens(tokens: List<String>): String {
-        // Join tokens
-        val joined = tokens.joinToString("")
+        val decoded = StringBuilder()
+
+        for (token in tokens) {
+            // Handle byte tokens like <0x0A> (newline), <0x09> (tab), etc.
+            if (token.matches(Regex("<0x[0-9A-Fa-f]{2}>"))) {
+                val hexValue = token.substring(3, 5)
+                val byteValue = hexValue.toInt(16).toByte()
+                decoded.append(byteValue.toInt().toChar())
+            } else {
+                // Regular token
+                decoded.append(token)
+            }
+        }
 
         // Replace SentencePiece space marker with actual spaces
-        return joined.replace("▁", " ").trim()
+        return decoded.toString().replace("▁", " ").trim()
     }
 
     /**
