@@ -34,13 +34,19 @@ class Phi3BPETokenizer(private val context: Context) {
 
             // Parse vocab
             vocab = parseVocab(tokenizerJson)
-            vocabReverse = vocab.entries.associate { it.value to it.key }
-
-            // Parse BPE merges
-            merges = parseMerges(tokenizerJson)
 
             // Parse special tokens
             specialTokens = parseSpecialTokens(tokenizerJson)
+
+            // Create reverse vocab with both regular tokens AND special tokens
+            val combinedVocab = vocab.toMutableMap()
+            specialTokens.forEach { (token, id) ->
+                combinedVocab[token] = id
+            }
+            vocabReverse = combinedVocab.entries.associate { it.value to it.key }
+
+            // Parse BPE merges
+            merges = parseMerges(tokenizerJson)
 
             Timber.i("Phi-3 SentencePiece BPE tokenizer loaded: vocab=${vocab.size}, merges=${merges.size}, special=${specialTokens.size}")
 

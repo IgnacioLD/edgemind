@@ -133,8 +133,14 @@ class ModelRepositoryImpl @Inject constructor(
                     pastKeyValues = kvCache  // Reuse cache from previous iteration
                 )
 
-                // Update cache for next iteration
+                // Clean up OLD cache after getting new one (prevent memory leak)
+                val oldCache = kvCache
                 kvCache = result.presentKeyValues
+
+                // Now close the old cache (it's been replaced)
+                if (i > 0 && oldCache != null) {
+                    oldCache.values.forEach { it.close() }
+                }
 
                 // Get logits for the last position
                 val lastTokenLogits = if (result.logits.size >= vocabSize) {
