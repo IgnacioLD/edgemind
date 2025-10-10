@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -89,7 +90,9 @@ fun ChatScreen(
             // Input field
             MessageInputField(
                 onSendMessage = { text, imageUri -> viewModel.sendMessage(text, imageUri) },
-                enabled = !uiState.isLoading
+                onStopGeneration = { viewModel.stopGeneration() },
+                enabled = !uiState.isLoading,
+                isGenerating = uiState.isLoading
             )
         }
     }
@@ -125,7 +128,9 @@ fun MessageBubble(message: Message) {
 @Composable
 fun MessageInputField(
     onSendMessage: (String, String?) -> Unit,
-    enabled: Boolean
+    onStopGeneration: () -> Unit,
+    enabled: Boolean,
+    isGenerating: Boolean
 ) {
     var text by remember { mutableStateOf("") }
     var selectedImageUri by remember { mutableStateOf<String?>(null) }
@@ -205,17 +210,31 @@ fun MessageInputField(
                 maxLines = 3
             )
 
-            FilledIconButton(
-                onClick = {
-                    if (text.isNotBlank()) {
-                        onSendMessage(text, selectedImageUri)
-                        text = ""
-                        selectedImageUri = null
-                    }
-                },
-                enabled = enabled && text.isNotBlank()
-            ) {
-                Icon(Icons.Default.Send, contentDescription = "Send")
+            if (isGenerating) {
+                // Stop button when generating
+                FilledTonalIconButton(
+                    onClick = onStopGeneration,
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                ) {
+                    Icon(Icons.Default.Stop, contentDescription = "Stop generation")
+                }
+            } else {
+                // Send button when not generating
+                FilledIconButton(
+                    onClick = {
+                        if (text.isNotBlank()) {
+                            onSendMessage(text, selectedImageUri)
+                            text = ""
+                            selectedImageUri = null
+                        }
+                    },
+                    enabled = enabled && text.isNotBlank()
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = "Send")
+                }
             }
         }
     }

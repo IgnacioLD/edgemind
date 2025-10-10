@@ -110,13 +110,8 @@ class ModelRepositoryImpl @Inject constructor(
             // Step 2: Autoregressive generation loop WITH KV CACHE
             Timber.d("Starting text generation with KV cache on ${model.getAccelerationType().name}...")
 
-            // Adaptive max tokens based on prompt length and type
-            val maxNewTokens = when {
-                request.prompt.length < 30 -> 50    // Very short: 1-2 sentences max
-                request.prompt.length < 100 -> 100  // Short questions: 100 tokens
-                request.prompt.length < 200 -> 150  // Medium prompts: 150 tokens
-                else -> 200  // Long prompts: 200 tokens
-            }
+            // Maximum tokens - let model decide when to stop via EOS tokens
+            val maxNewTokens = 400  // Safety limit to prevent infinite loops
 
             val vocabSize = tokenizer.getVocabSize()
             val generatedTokens = mutableListOf<Long>()
@@ -191,74 +186,54 @@ class ModelRepositoryImpl @Inject constructor(
                     break
                 }
 
-                // 2. Consecutive repetition detection (same token repeated)
-                if (generatedTokens.size >= 2 && nextTokenId.toLong() == generatedTokens[generatedTokens.size - 1]) {
+                // 2. Consecutive repetition detection (same token repeated many times)
+                // Only stop if same token appears 10+ times in a row (severe repetition)
+                // Note: generatedTokens already has nextTokenId added, so compare with second-to-last
+                if (generatedTokens.size >= 2 && nextTokenId.toLong() == generatedTokens[generatedTokens.size - 2]) {
                     consecutiveRepeats++
-                    if (consecutiveRepeats >= 3) {
-                        Timber.d("Consecutive token repetition detected, stopping")
+                    if (consecutiveRepeats >= 10) {
+                        Timber.d("Excessive consecutive repetition detected ($consecutiveRepeats times), stopping")
                         break
                     }
                 } else {
                     consecutiveRepeats = 0
                 }
 
-                // 3. N-gram repetition detection (track 3-grams and 4-grams)
-                tokenWindow.add(nextTokenId.toLong())
-                if (tokenWindow.size > 20) tokenWindow.removeAt(0)
+                // 3. N-gram repetition detection (track 4-grams and 5-grams)
+                // Only check after generating reasonable amount of tokens
+                if (i >= 30) {
+                    tokenWindow.add(nextTokenId.toLong())
+                    if (tokenWindow.size > 20) tokenWindow.removeAt(0)
 
-                if (tokenWindow.size >= 4) {
-                    // Check 3-grams
-                    val trigram = tokenWindow.takeLast(3)
-                    ngramCache[trigram] = (ngramCache[trigram] ?: 0) + 1
-                    if (ngramCache[trigram]!! >= 3) {
-                        Timber.d("3-gram repetition detected: $trigram (${ngramCache[trigram]} times)")
-                        ngramRepetitions++
-                    }
-
-                    // Check 4-grams
                     if (tokenWindow.size >= 5) {
+                        // Check 4-grams (require 4+ repetitions)
                         val fourgram = tokenWindow.takeLast(4)
                         ngramCache[fourgram] = (ngramCache[fourgram] ?: 0) + 1
-                        if (ngramCache[fourgram]!! >= 2) {
+                        if (ngramCache[fourgram]!! >= 4) {
                             Timber.d("4-gram repetition detected: $fourgram (${ngramCache[fourgram]} times)")
                             ngramRepetitions++
                         }
-                    }
 
-                    if (ngramRepetitions >= 2) {
-                        Timber.d("Multiple n-gram repetitions detected, stopping")
-                        break
-                    }
-                }
+                        // Check 5-grams (require 3+ repetitions)
+                        if (tokenWindow.size >= 6) {
+                            val fivegram = tokenWindow.takeLast(5)
+                            ngramCache[fivegram] = (ngramCache[fivegram] ?: 0) + 1
+                            if (ngramCache[fivegram]!! >= 3) {
+                                Timber.d("5-gram repetition detected: $fivegram (${ngramCache[fivegram]} times)")
+                                ngramRepetitions++
+                            }
+                        }
 
-                // 4. Early stopping for short prompts with complete answers
-                if (request.prompt.length < 100) {
-                    // Count sentence endings (., !, ?)
-                    if (tokenText.matches(Regex(".*[.!?]\\s*"))) {
-                        sentenceEndCount++
-
-                        // For very short prompts, stop after 1-2 sentences
-                        if (request.prompt.length < 30 && sentenceEndCount >= 1 && i >= 10) {
-                            Timber.d("Short prompt: Complete sentence detected, stopping early")
-                            break
-                        } else if (request.prompt.length < 100 && sentenceEndCount >= 2 && i >= 20) {
-                            Timber.d("Short prompt: Two sentences completed, stopping")
+                        if (ngramRepetitions >= 3) {
+                            Timber.d("Multiple n-gram repetitions detected, stopping")
                             break
                         }
                     }
                 }
 
-                // 5. Stop if answer ends with period/exclamation and has reasonable length
-                if (i >= 15 && (nextTokenId == 13 || tokenText.trim().endsWith(".") || tokenText.trim().endsWith("!"))) {
-                    val fullText = tokenizer.decode(generatedTokens.toLongArray(), skipSpecialTokens = true)
-                    val trimmed = fullText.trim()
-
-                    // For short prompts: stop if we have complete sentence(s)
-                    if (request.prompt.length < 50 && trimmed.length > 20 &&
-                        (trimmed.endsWith(".") || trimmed.endsWith("!") || trimmed.endsWith("?"))) {
-                        Timber.d("Complete answer detected (${trimmed.length} chars), stopping")
-                        break
-                    }
+                // 4. Count sentence endings for monitoring (no early stopping)
+                if (tokenText.matches(Regex(".*[.!?]\\s*"))) {
+                    sentenceEndCount++
                 }
 
                 // Extend attention mask for next iteration

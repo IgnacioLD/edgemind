@@ -8,6 +8,7 @@ import com.localai.assistant.domain.model.MessageRole
 import com.localai.assistant.domain.usecase.CreateConversationUseCase
 import com.localai.assistant.domain.usecase.SendMessageUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -25,6 +26,8 @@ class ChatViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
+
+    private var generationJob: Job? = null  // Track current generation for cancellation
 
     init {
         initializeConversation()
@@ -66,7 +69,7 @@ class ChatViewModel @Inject constructor(
             )
         }
 
-        viewModelScope.launch {
+        generationJob = viewModelScope.launch {
             sendMessageUseCase(conversationId, userMessage)
                 .catch { error ->
                     Timber.e(error, "Error sending message")
@@ -129,6 +132,13 @@ class ChatViewModel @Inject constructor(
                     }
                 }
         }
+    }
+
+    fun stopGeneration() {
+        generationJob?.cancel()
+        generationJob = null
+        _uiState.update { it.copy(isLoading = false) }
+        Timber.d("Generation stopped by user")
     }
 
     fun clearError() {
