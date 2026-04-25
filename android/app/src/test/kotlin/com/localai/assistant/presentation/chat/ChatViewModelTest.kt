@@ -3,11 +3,16 @@ package com.localai.assistant.presentation.chat
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
+import com.localai.assistant.data.local.AndroidTtsEngine
+import com.localai.assistant.data.local.AudioRecorder
+import com.localai.assistant.data.local.Gemma4ModelWrapper
 import com.localai.assistant.domain.model.*
+import com.localai.assistant.domain.repository.ModelAvailabilityRepository
 import com.localai.assistant.domain.usecase.CreateConversationUseCase
 import com.localai.assistant.domain.usecase.SendMessageUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.*
 import org.junit.After
@@ -15,6 +20,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.mockito.kotlin.any
+import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 
@@ -32,6 +38,10 @@ class ChatViewModelTest {
 
     private lateinit var sendMessageUseCase: SendMessageUseCase
     private lateinit var createConversationUseCase: CreateConversationUseCase
+    private lateinit var modelAvailability: ModelAvailabilityRepository
+    private lateinit var audioRecorder: AudioRecorder
+    private lateinit var tts: AndroidTtsEngine
+    private lateinit var gemma: Gemma4ModelWrapper
     private lateinit var viewModel: ChatViewModel
 
     @Before
@@ -39,6 +49,12 @@ class ChatViewModelTest {
         Dispatchers.setMain(testDispatcher)
         sendMessageUseCase = mock()
         createConversationUseCase = mock()
+        modelAvailability = mock()
+        audioRecorder = mock()
+        tts = mock()
+        gemma = mock()
+        whenever(gemma.isLoaded()).thenReturn(true)
+        whenever(modelAvailability.status).thenReturn(MutableStateFlow(ModelStatus.Ready))
     }
 
     @After
@@ -51,11 +67,11 @@ class ChatViewModelTest {
         // Given
         val conversation = Conversation(id = "test-id", title = "Test")
         whenever(createConversationUseCase.invoke(any())).thenReturn(Result.success(conversation))
-        whenever(sendMessageUseCase.invoke(any(), any())).thenReturn(
+        whenever(sendMessageUseCase.invoke(any(), any(), anyOrNull())).thenReturn(
             flowOf(InferenceResult.Loading)
         )
 
-        viewModel = ChatViewModel(sendMessageUseCase, createConversationUseCase)
+        viewModel = ChatViewModel(sendMessageUseCase, createConversationUseCase, modelAvailability, audioRecorder, tts, gemma)
         advanceUntilIdle()
 
         // When
@@ -76,11 +92,11 @@ class ChatViewModelTest {
         // Given
         val conversation = Conversation(id = "test-id", title = "Test")
         whenever(createConversationUseCase.invoke(any())).thenReturn(Result.success(conversation))
-        whenever(sendMessageUseCase.invoke(any(), any())).thenReturn(
+        whenever(sendMessageUseCase.invoke(any(), any(), anyOrNull())).thenReturn(
             flowOf(InferenceResult.Loading)
         )
 
-        viewModel = ChatViewModel(sendMessageUseCase, createConversationUseCase)
+        viewModel = ChatViewModel(sendMessageUseCase, createConversationUseCase, modelAvailability, audioRecorder, tts, gemma)
         advanceUntilIdle()
 
         // When
@@ -99,7 +115,7 @@ class ChatViewModelTest {
         // Given
         val conversation = Conversation(id = "test-id", title = "Test")
         whenever(createConversationUseCase.invoke(any())).thenReturn(Result.success(conversation))
-        whenever(sendMessageUseCase.invoke(any(), any())).thenReturn(
+        whenever(sendMessageUseCase.invoke(any(), any(), anyOrNull())).thenReturn(
             flowOf(
                 InferenceResult.Success(
                     text = "AI Response",
@@ -109,7 +125,7 @@ class ChatViewModelTest {
             )
         )
 
-        viewModel = ChatViewModel(sendMessageUseCase, createConversationUseCase)
+        viewModel = ChatViewModel(sendMessageUseCase, createConversationUseCase, modelAvailability, audioRecorder, tts, gemma)
         advanceUntilIdle()
 
         // When

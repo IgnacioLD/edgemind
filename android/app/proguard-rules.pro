@@ -2,13 +2,6 @@
 # By default, the flags in this file are appended to flags specified
 # in \$ANDROID_HOME/tools/proguard/proguard-android.txt
 
-# Keep TensorFlow Lite classes
--keep class org.tensorflow.lite.** { *; }
--keep interface org.tensorflow.lite.** { *; }
-
-# Keep model-related classes
--keep class com.localai.assistant.data.local.TFLiteModelWrapper { *; }
-
 # Keep Room database classes
 -keep class * extends androidx.room.RoomDatabase
 -keep @androidx.room.Entity class *

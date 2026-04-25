@@ -83,8 +83,8 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.5")
 
     // Hilt Dependency Injection
-    implementation("com.google.dagger:hilt-android:2.52")
-    kapt("com.google.dagger:hilt-android-compiler:2.52")
+    implementation("com.google.dagger:hilt-android:2.57.2")
+    kapt("com.google.dagger:hilt-android-compiler:2.57.2")
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
 
     // Coroutines
@@ -94,20 +94,15 @@ dependencies {
     // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
-    // ONNX Runtime Mobile (for ML models with NPU/GPU/NNAPI support)
-    // Using latest version for IR v10 support
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
-
-    // JSON parsing for tokenizer.json
-    implementation("org.json:json:20240303")
-
-    // TensorFlow Lite (legacy/fallback)
-    implementation("org.tensorflow:tensorflow-lite:2.14.0")
-    implementation("org.tensorflow:tensorflow-lite-gpu:2.14.0")
-    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    // On-device LLM inference — LiteRT-LM (Gemma 4 E2B with native audio).
+    // We use this rather than MediaPipe `tasks-genai` because Gemma 4's audio adapter sections are
+    // CPU-pinned in the .litertlm but tasks-genai's audio executor is hardcoded GPU-only and fails
+    // to load LlmParameters. LiteRT-LM exposes per-modality backends (GPU LLM, CPU audio) which
+    // is what the model actually requires.
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.10.2")
 
     // Room Database (for conversation history)
-    val roomVersion = "2.6.1"
+    val roomVersion = "2.8.4"
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")
     kapt("androidx.room:room-compiler:$roomVersion")
@@ -132,8 +127,8 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    androidTestImplementation("com.google.dagger:hilt-android-testing:2.52")
-    kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.52")
+    androidTestImplementation("com.google.dagger:hilt-android-testing:2.57.2")
+    kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.57.2")
 
     // Debug
     debugImplementation("androidx.compose.ui:ui-tooling")
