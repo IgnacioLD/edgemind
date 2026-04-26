@@ -4,6 +4,7 @@ import com.google.ai.edge.litertlm.ToolProvider
 import com.google.ai.edge.litertlm.tool
 import com.localai.assistant.data.tool.CalendarTools
 import com.localai.assistant.data.tool.ContactsTools
+import com.localai.assistant.data.tool.DeviceTools
 import com.localai.assistant.data.tool.MusicTools
 import com.localai.assistant.data.tool.SystemTools
 import dagger.Module
@@ -28,4 +29,7 @@ object ToolModule {
 
     @Provides @Singleton @IntoSet
     fun provideMusicToolsProvider(tools: MusicTools): ToolProvider = tool(tools)
+
+    @Provides @Singleton @IntoSet
+    fun provideDeviceToolsProvider(tools: DeviceTools): ToolProvider = tool(tools)
 }

@@ -6,6 +6,11 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -25,7 +30,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
@@ -61,6 +68,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
@@ -300,27 +311,115 @@ private fun formatMb(bytes: Long): String {
 @Composable
 private fun MessageBubble(message: Message) {
     val isUser = message.role == MessageRole.USER
+    val containerColor = if (isUser) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contentColor = if (isUser) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    // Asymmetric corners — chat convention is the corner pointing at the sender stays sharper.
+    val bubbleShape = if (isUser) {
+        RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 4.dp)
+    } else {
+        RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 4.dp, bottomEnd = 18.dp)
+    }
+    val isVoice = message.voiceWaveform != null && message.voiceDurationMs != null
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
-        Card(
-            modifier = Modifier.widthIn(max = 300.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = if (isUser) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.secondaryContainer
-                },
-            ),
+        Box(
+            modifier = Modifier
+                .widthIn(max = 300.dp)
+                .background(color = containerColor, shape = bubbleShape)
+                .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
-            Text(
-                text = message.content,
-                modifier = Modifier.padding(12.dp),
-                style = MaterialTheme.typography.bodyMedium,
+            if (isVoice) {
+                VoiceBubbleContent(
+                    waveform = message.voiceWaveform!!,
+                    durationMs = message.voiceDurationMs!!,
+                    barColor = contentColor,
+                )
+            } else {
+                Text(
+                    text = message.content,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = contentColor,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun VoiceBubbleContent(
+    waveform: List<Float>,
+    durationMs: Long,
+    barColor: Color,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.Mic,
+            contentDescription = null,
+            tint = barColor,
+            modifier = Modifier.size(18.dp),
+        )
+        WaveformBars(
+            amplitudes = waveform,
+            color = barColor,
+            modifier = Modifier
+                .height(28.dp)
+                .width(160.dp),
+        )
+        Text(
+            text = formatDuration(durationMs),
+            style = MaterialTheme.typography.labelMedium,
+            color = barColor,
+        )
+    }
+}
+
+@Composable
+private fun WaveformBars(
+    amplitudes: List<Float>,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Canvas(modifier = modifier) {
+        if (amplitudes.isEmpty()) return@Canvas
+        val n = amplitudes.size
+        val totalGapWidth = (n - 1) * 3f
+        val barWidth = ((size.width - totalGapWidth) / n).coerceAtLeast(1f)
+        val minBarHeight = 4f
+        val maxBarHeight = size.height
+        for (i in 0 until n) {
+            val amp = amplitudes[i].coerceIn(0f, 1f)
+            val barHeight = (minBarHeight + (maxBarHeight - minBarHeight) * amp)
+                .coerceAtLeast(minBarHeight)
+            val x = i * (barWidth + 3f)
+            val y = (size.height - barHeight) / 2f
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(x, y),
+                size = Size(barWidth, barHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f, barWidth / 2f),
             )
         }
     }
+}
+
+private fun formatDuration(ms: Long): String {
+    val totalSeconds = (ms / 1000).coerceAtLeast(0)
+    val mins = totalSeconds / 60
+    val secs = totalSeconds % 60
+    return "%d:%02d".format(mins, secs)
 }
 
 @Composable
@@ -451,20 +550,45 @@ private fun RecordingIndicator() {
 
 @Composable
 private fun LoadingIndicator() {
+    val bubbleShape = RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 4.dp, bottomEnd = 18.dp)
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start,
     ) {
-        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = "Thinking...",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.surfaceVariant, shape = bubbleShape)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TypingDot(delayMs = 0)
+            TypingDot(delayMs = 150)
+            TypingDot(delayMs = 300)
+        }
     }
+}
+
+@Composable
+private fun TypingDot(delayMs: Int) {
+    val transition = rememberInfiniteTransition(label = "typing-dot")
+    val alpha by transition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 600, delayMillis = delayMs),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "typing-dot-alpha",
+    )
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .background(
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+                shape = CircleShape,
+            ),
+    )
 }
 
 @Composable
@@ -475,11 +599,11 @@ private fun ToolPermissionsDialog(
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Tool permissions") },
+        title = { Text("Permissions & Roles") },
         text = {
             Column {
                 Text(
-                    "EdgeMind tools need extra access. Grant only what you want to use.",
+                    "EdgeMind needs a few grants to act as your assistant.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -490,6 +614,11 @@ private fun ToolPermissionsDialog(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     "• Notification access — see what's playing for music control.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "• Default Assistant — long-press home / assist gesture launches EdgeMind.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -507,6 +636,10 @@ private fun ToolPermissionsDialog(
                     onDismiss()
                 }) { Text("Open notification access") }
                 TextButton(onClick = {
+                    requestAssistantRole(context)
+                    onDismiss()
+                }) { Text("Set as default Assistant") }
+                TextButton(onClick = {
                     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                         data = Uri.fromParts("package", context.packageName, null)
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
@@ -520,6 +653,25 @@ private fun ToolPermissionsDialog(
             TextButton(onClick = onDismiss) { Text("Close") }
         },
     )
+}
+
+// ROLE_ASSISTANT was added in Q (29). On older devices the request is a no-op and we fall
+// back to the legacy Default Apps settings screen so the user can pick EdgeMind manually.
+private fun requestAssistantRole(context: android.content.Context) {
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        val rm = context.getSystemService(android.app.role.RoleManager::class.java)
+        if (rm?.isRoleAvailable(android.app.role.RoleManager.ROLE_ASSISTANT) == true) {
+            val intent = rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_ASSISTANT).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            runCatching { context.startActivity(intent) }
+            return
+        }
+    }
+    val fallback = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+    }
+    runCatching { context.startActivity(fallback) }
 }
 
 @Composable

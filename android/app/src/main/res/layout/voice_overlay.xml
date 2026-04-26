@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#1F1B24"
+    android:padding="24dp"
+    android:gravity="center_horizontal">
+
+    <TextView
+        android:id="@+id/voice_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="EdgeMind"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:id="@+id/voice_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#CCCCCC"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:layout_marginBottom="16dp" />
+
+    <TextView
+        android:id="@+id/voice_response"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#FFFFFF"
+        android:textSize="15sp"
+        android:gravity="center" />
+
+    <!-- Filler so the mic gets pushed to the bottom of the overlay. -->
+    <Space
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <ImageButton
+        android:id="@+id/voice_mic"
+        android:layout_width="84dp"
+        android:layout_height="84dp"
+        android:background="@android:color/transparent"
+        android:src="@android:drawable/ic_btn_speak_now"
+        android:scaleType="centerInside"
+        android:contentDescription="Stop listening" />
+
+    <Button
+        android:id="@+id/voice_close"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Close"
+        android:layout_marginTop="12dp" />
+</LinearLayout>

@@ -102,7 +102,9 @@ class ChatViewModel @Inject constructor(
         _uiState.update { it.copy(isRecording = true, error = null) }
         recordingJob = viewModelScope.launch {
             try {
-                val pcm = audioRecorder.recordUntilStop { !_uiState.value.isRecording }
+                val pcm = audioRecorder.recordUntilStop(
+                    stopSignal = { !_uiState.value.isRecording },
+                )
                 _uiState.update { it.copy(isRecording = false) }
                 if (pcm.isNotEmpty()) {
                     sendVoice(pcm)
@@ -132,13 +134,54 @@ class ChatViewModel @Inject constructor(
 
     private fun sendVoice(audioPcm: ByteArray) {
         val conversationId = _uiState.value.conversationId ?: return
-        // The user's message text comes back as part of Gemma's transcription/answer; for the bubble,
-        // show a placeholder until the assistant reply is added.
+        // Build a duration label + downsampled waveform envelope from the raw PCM so the user's
+        // bubble can render like a proper voice note (mic + bars + 0:03) instead of a placeholder.
+        // Audio format is 16 kHz mono int16 little-endian: 2 bytes per sample, 32_000 bytes/second.
+        val sampleCount = audioPcm.size / 2
+        val durationMs = (sampleCount.toLong() * 1000L) / 16_000L
+        val waveform = downsampleAmplitudes(audioPcm, buckets = 28)
         val userMessage = Message(
             content = "🎙️ (voice message)",
             role = MessageRole.USER,
+            voiceDurationMs = durationMs,
+            voiceWaveform = waveform,
         )
+        // Immediate auditory ack so the user hears something *before* the long inference +
+        // tool-execute + decode cycle. Without this, the user releases the mic and gets several
+        // seconds of silence before the final TTS, which feels broken. The ack is fire-and-
+        // forget; the final response will flush this when it speaks.
+        val ack = if (java.util.Locale.getDefault().language.lowercase() == "es") "Vale" else "OK"
+        tts.speak(ack)
         dispatchInference(conversationId, userMessage, audioPcm)
+    }
+
+    // Peak-of-abs over each bucket, normalized to the loudest bucket. Peak (vs RMS) gives a
+    // more "voice-note"-y crisp envelope; normalization keeps the bars filling the bubble height
+    // even for quiet recordings.
+    private fun downsampleAmplitudes(pcm: ByteArray, buckets: Int): List<Float> {
+        val sampleCount = pcm.size / 2
+        if (sampleCount <= 0 || buckets <= 0) return emptyList()
+        val perBucket = (sampleCount + buckets - 1) / buckets
+        val out = FloatArray(buckets)
+        var max = 0f
+        for (b in 0 until buckets) {
+            val start = b * perBucket
+            val end = minOf(start + perBucket, sampleCount)
+            var peak = 0
+            for (i in start until end) {
+                val lo = pcm[i * 2].toInt() and 0xFF
+                val hi = pcm[i * 2 + 1].toInt()
+                val sample = (hi shl 8) or lo
+                val abs = if (sample < 0) -sample else sample
+                if (abs > peak) peak = abs
+            }
+            val v = peak.toFloat()
+            out[b] = v
+            if (v > max) max = v
+        }
+        if (max <= 0f) return out.toList()
+        for (i in out.indices) out[i] = (out[i] / max).coerceIn(0f, 1f)
+        return out.toList()
     }
 
     fun sendMessage(content: String, imageUri: String? = null) {

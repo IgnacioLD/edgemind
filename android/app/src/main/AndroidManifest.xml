@@ -62,6 +62,42 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
+
+        <!-- Phase 5: become the system assistant. The user grants this via
+             RoleManager.ROLE_ASSISTANT; once granted, long-press home / assist gesture brings
+             up our overlay session.
+
+             VoiceInteractionService is the bind point — empty class, just a marker. The
+             metadata XML points the framework at the SessionService (overlay factory) and
+             the stub RecognitionService (required by the XML schema even though Gemma 4
+             handles audio directly without a separate STT). -->
+        <service
+            android:name=".presentation.voice.EdgeMindVoiceInteractionService"
+            android:exported="true"
+            android:label="EdgeMind"
+            android:permission="android.permission.BIND_VOICE_INTERACTION">
+            <meta-data
+                android:name="android.voice_interaction"
+                android:resource="@xml/voice_interaction_service" />
+            <intent-filter>
+                <action android:name="android.service.voice.VoiceInteractionService" />
+            </intent-filter>
+        </service>
+        <service
+            android:name=".presentation.voice.EdgeMindVoiceInteractionSessionService"
+            android:exported="true"
+            android:permission="android.permission.BIND_VOICE_INTERACTION" />
+        <service
+            android:name=".presentation.voice.StubRecognitionService"
+            android:exported="true"
+            android:label="EdgeMind speech recognition">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.speech"
+                android:resource="@xml/recognition_service" />
+        </service>
     </application>
 
 </manifest>

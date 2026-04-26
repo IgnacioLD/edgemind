@@ -231,7 +231,8 @@ class Gemma4ModelWrapper @Inject constructor(
                 Calendar event times must be ISO 8601 LOCAL format with no timezone suffix (example: 2026-04-26T19:00:00). Treat them as the [Now] timezone.
                 For greetings and general-knowledge questions, reply directly without calling any tool. Call a tool only when the user explicitly asks for an action (timer, music, calendar read/create, contact lookup, app launch, flashlight, volume) or for current information you cannot know (then use search_web).
                 After a tool returns, ALWAYS write a short natural-language reply describing what you did or found. Never end your turn with only a tool call.
-                Reply in the same language the user used. Reply in one or two sentences.
+                Reply in the SAME language the user wrote or spoke in. If they write in Spanish, reply in Spanish. If they speak in French, reply in French. If they use English, reply in English. Mirror their language exactly, including for tool result summaries. Never default to English if the user used a different language.
+                Reply in one or two sentences.
                 Do not produce reasoning, thinking, analysis, scratchpad, or chain-of-thought tags.
                 """.trimIndent(),
             ),
