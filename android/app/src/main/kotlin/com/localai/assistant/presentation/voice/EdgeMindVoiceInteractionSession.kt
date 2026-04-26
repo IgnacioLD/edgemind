@@ -18,7 +18,6 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -74,14 +73,11 @@ class EdgeMindVoiceInteractionSession(
     @Volatile private var recording: Boolean = false
     @Volatile private var stopRequested: Boolean = false
 
-    private val isSpanish: Boolean
-        get() = Locale.getDefault().language.lowercase() == "es"
-
-    private val loadingPrompt: String get() = if (isSpanish) "Cargando" else "Loading"
-    private val ackPrompt: String get() = if (isSpanish) "Vale" else "OK"
-    private val listeningStatus: String get() = if (isSpanish) "Escuchando…" else "Listening…"
-    private val thinkingStatus: String get() = if (isSpanish) "Pensando…" else "Thinking…"
-    private val speakingStatus: String get() = if (isSpanish) "Hablando…" else "Speaking…"
+    private val loadingPrompt = "Loading"
+    private val ackPrompt = "OK"
+    private val listeningStatus = "Listening…"
+    private val thinkingStatus = "Thinking…"
+    private val speakingStatus = "Speaking…"
 
     override fun onCreateContentView(): View {
         val view = layoutInflater.inflate(R.layout.voice_overlay, null)
@@ -132,7 +128,7 @@ class EdgeMindVoiceInteractionSession(
             setStatus(listeningStatus)
             val pcm = recordWithCap()
             if (pcm.isEmpty()) {
-                setStatus(if (isSpanish) "No te he oído." else "I didn't hear anything.")
+                setStatus("I didn't hear anything.")
                 delay(1500)
                 finishGracefully()
                 return
@@ -151,7 +147,7 @@ class EdgeMindVoiceInteractionSession(
 
     private suspend fun recordWithCap(): ByteArray {
         if (!deps.audioRecorder().hasMicPermission()) {
-            setStatus(if (isSpanish) "Falta permiso de micrófono." else "Mic permission missing.")
+            setStatus("Mic permission missing.")
             return ByteArray(0)
         }
         recording = true

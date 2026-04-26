@@ -36,13 +36,18 @@ class DeviceTools @Inject constructor(
             putExtra(AlarmClock.EXTRA_SKIP_UI, true)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
+        if (intent.resolveActivity(context.packageManager) == null) {
+            Timber.w("setAlarm: no activity resolves ACTION_SET_ALARM")
+            return "No clock app on this device can set alarms."
+        }
         return try {
             context.startActivity(intent)
             val displayHour = if (hour % 12 == 0) 12 else hour % 12
             val ampm = if (hour < 12) "AM" else "PM"
             "Alarm set for ${displayHour}:${minute.toString().padStart(2, '0')} $ampm."
-        } catch (e: ActivityNotFoundException) {
-            "No clock app available to set the alarm."
+        } catch (e: Exception) {
+            Timber.w(e, "setAlarm startActivity failed")
+            "Failed to set the alarm: ${e.message}"
         }
     }
 

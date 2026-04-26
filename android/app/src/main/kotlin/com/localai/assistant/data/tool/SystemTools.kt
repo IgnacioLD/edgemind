@@ -25,24 +25,32 @@ class SystemTools @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : ToolSet {
 
-    @Tool(description = "Sets a system timer for the given number of minutes. Use for cooking, breaks, reminders. Fires through the device's clock app.")
+    @Tool(description = "Sets a countdown timer in the device's clock app. Use for cooking, breaks, reminders, any 'set a timer for N minutes' request.")
     fun setTimer(
-        @ToolParam(description = "Minutes from now to fire the timer (must be positive)") minutes: Int,
+        @ToolParam(description = "Minutes from now to fire the timer (1-1440)") minutes: Int,
         @ToolParam(description = "Optional label shown on the timer notification") label: String = "",
     ): String {
         Timber.i("TOOL setTimer(minutes=$minutes, label='$label')")
         if (minutes <= 0) return "Error: minutes must be positive."
         val intent = Intent(AlarmClock.ACTION_SET_TIMER).apply {
             putExtra(AlarmClock.EXTRA_LENGTH, minutes * 60)
-            putExtra(AlarmClock.EXTRA_MESSAGE, label.ifEmpty { "EdgeMind timer" })
+            putExtra(AlarmClock.EXTRA_MESSAGE, label.ifEmpty { "EdgeMind" })
             putExtra(AlarmClock.EXTRA_SKIP_UI, true)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        // Resolve before launching: ACTION_SET_TIMER goes silent on devices where no clock
+        // app handles it, instead of throwing ActivityNotFoundException. Without this check
+        // the tool would log success while nothing actually happens.
+        if (intent.resolveActivity(context.packageManager) == null) {
+            Timber.w("setTimer: no activity resolves ACTION_SET_TIMER")
+            return "No clock app on this device can set timers."
         }
         return try {
             context.startActivity(intent)
             "Timer set for $minutes minute(s)."
-        } catch (e: ActivityNotFoundException) {
-            "No clock app available to set the timer."
+        } catch (e: Exception) {
+            Timber.w(e, "setTimer startActivity failed")
+            "Failed to set the timer: ${e.message}"
         }
     }
 

@@ -65,11 +65,11 @@ class AndroidTtsEngine @Inject constructor(
         if (tts == null) {
             tts = TextToSpeech(context) { status ->
                 if (status == TextToSpeech.SUCCESS) {
-                    val locale = Locale.getDefault()
-                    val result = tts?.setLanguage(locale)
+                    // Hardcoded to English while the app is English-only. If we re-introduce
+                    // localized voices we'd flip back to Locale.getDefault() with this as fallback.
+                    val result = tts?.setLanguage(Locale.US)
                     if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                        Timber.w("TTS locale $locale unavailable, falling back to US English")
-                        tts?.setLanguage(Locale.US)
+                        Timber.w("TTS US English unavailable on this device")
                     }
                     tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {}

@@ -6,12 +6,16 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,45 +23,43 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -68,19 +70,33 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.localai.assistant.domain.model.Message
 import com.localai.assistant.domain.model.MessageRole
 import com.localai.assistant.domain.model.ModelStatus
+import com.localai.assistant.presentation.common.theme.StatusError
+import com.localai.assistant.presentation.common.theme.StatusMuted
+import com.localai.assistant.presentation.common.theme.StatusPreparing
+import com.localai.assistant.presentation.common.theme.StatusReady
 import kotlinx.coroutines.launch
+
+private val SuggestionPrompts = listOf(
+    "Set a 5 minute timer",
+    "What's on my calendar today?",
+    "Search for nearby restaurants",
+    "Set an alarm for 8 AM",
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -110,18 +126,15 @@ fun ChatScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0),
         topBar = {
-            TopAppBar(
-                title = { Text("EdgeMind") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                ),
-                actions = {
-                    IconButton(onClick = { settingsOpen = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
-                },
+            EdgeTopBar(
+                modelStatus = uiState.modelStatus,
+                isPreparing = uiState.isPreparing,
+                isLoading = uiState.isLoading,
+                onNewConversation = viewModel::newConversation,
+                onSettingsClick = { settingsOpen = true },
             )
         },
     ) { paddingValues ->
@@ -179,6 +192,93 @@ fun ChatScreen(
     }
 }
 
+// Transparent top bar with the brand wordmark and a status dot. No heavy colored block —
+// the deep background flows under the status bar.
+@Composable
+private fun EdgeTopBar(
+    modelStatus: ModelStatus,
+    isPreparing: Boolean,
+    isLoading: Boolean,
+    onNewConversation: () -> Unit,
+    onSettingsClick: () -> Unit,
+) {
+    val statusColor = when {
+        modelStatus is ModelStatus.Failed -> StatusError
+        modelStatus is ModelStatus.Downloading || isPreparing -> StatusPreparing
+        modelStatus == ModelStatus.Ready -> StatusReady
+        else -> StatusMuted
+    }
+    val statusLabel = when {
+        modelStatus is ModelStatus.Failed -> "Offline"
+        modelStatus is ModelStatus.Downloading -> "Downloading"
+        isPreparing -> "Preparing"
+        isLoading -> "Thinking"
+        modelStatus == ModelStatus.Ready -> "Ready"
+        else -> "Idle"
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "EdgeMind",
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.3.sp,
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StatusDot(color = statusColor, animatePulse = isLoading || isPreparing)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = statusLabel,
+                    style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.5.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        IconButton(onClick = onNewConversation) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "New conversation",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = onSettingsClick) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "Settings",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusDot(color: Color, animatePulse: Boolean) {
+    val transition = rememberInfiniteTransition(label = "status-dot")
+    val pulse by transition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "status-dot-pulse",
+    )
+    val alpha = if (animatePulse) pulse else 1f
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .background(color = color.copy(alpha = alpha), shape = CircleShape),
+    )
+}
+
 @Composable
 private fun ChatBody(
     uiState: ChatUiState,
@@ -189,19 +289,26 @@ private fun ChatBody(
     onMicRelease: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            items(uiState.messages) { message ->
-                MessageBubble(message = message)
-            }
-            if (uiState.isLoading) {
-                item { LoadingIndicator() }
+        if (uiState.messages.isEmpty() && !uiState.isLoading) {
+            WelcomeEmptyState(
+                modifier = Modifier.weight(1f),
+                onSuggestionClick = onSendMessage,
+            )
+        } else {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(uiState.messages) { message ->
+                    MessageBubble(message = message)
+                }
+                if (uiState.isLoading) {
+                    item { LoadingIndicator() }
+                }
             }
         }
         if (uiState.isRecording) {
@@ -220,6 +327,84 @@ private fun ChatBody(
 }
 
 @Composable
+private fun WelcomeEmptyState(
+    modifier: Modifier = Modifier,
+    onSuggestionClick: (String) -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 28.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        // Brand "halo" — soft gradient orb behind the wordmark.
+        Box(
+            modifier = Modifier
+                .size(96.dp)
+                .background(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.0f),
+                        ),
+                    ),
+                    shape = CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = CircleShape,
+                    ),
+            )
+        }
+        Spacer(modifier = Modifier.height(20.dp))
+        Text(
+            text = "Hi, I'm EdgeMind",
+            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "Private, on-device. Ask anything or hold the mic.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(28.dp))
+        SuggestionPrompts.forEach { prompt ->
+            SuggestionChip(text = prompt, onClick = { onSuggestionClick(prompt) })
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun SuggestionChip(text: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline,
+                shape = RoundedCornerShape(14.dp),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
 private fun ModelGate(
     status: ModelStatus,
     onDownload: () -> Unit,
@@ -228,26 +413,33 @@ private fun ModelGate(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
             text = "Gemma 4 (E2B)",
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "EdgeMind needs a 2.58 GB model to run on your device. Wi-Fi recommended.",
             style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
         when (status) {
             ModelStatus.Missing -> {
-                Button(onClick = onDownload) { Text("Download model") }
+                Button(
+                    onClick = onDownload,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                ) { Text("Download model") }
             }
             is ModelStatus.Downloading -> {
                 val total = status.bytesTotal.takeIf { it > 0 } ?: 1L
@@ -255,11 +447,14 @@ private fun ModelGate(
                 LinearProgressIndicator(
                     progress = fraction,
                     modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = "${formatMb(status.bytesDone)} of ${formatMb(status.bytesTotal)} (${(fraction * 100).toInt()}%)",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedButton(onClick = onCancel) { Text("Cancel") }
@@ -283,19 +478,20 @@ private fun PreparingModel() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        CircularProgressIndicator()
-        Spacer(modifier = Modifier.height(16.dp))
+        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.height(20.dp))
         Text(
-            text = "Preparing Gemma 4 on first run…",
-            style = MaterialTheme.typography.bodyMedium,
+            text = "Preparing Gemma 4…",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = "This can take 20–60 seconds while the model loads into memory.",
+            text = "First run can take up to a minute while the model loads into memory.",
             style = MaterialTheme.typography.bodySmall,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -321,7 +517,6 @@ private fun MessageBubble(message: Message) {
     } else {
         MaterialTheme.colorScheme.onSurface
     }
-    // Asymmetric corners — chat convention is the corner pointing at the sender stays sharper.
     val bubbleShape = if (isUser) {
         RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 4.dp)
     } else {
@@ -436,93 +631,149 @@ private fun MessageInputField(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .systemBarsPadding()
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         OutlinedTextField(
             value = text,
             onValueChange = { text = it },
             modifier = Modifier.weight(1f),
-            placeholder = { Text("Ask anything... or hold the mic") },
+            placeholder = {
+                Text(
+                    "Ask anything…",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
             enabled = enabled,
-            maxLines = 3,
+            maxLines = 4,
+            shape = RoundedCornerShape(22.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = Color.Transparent,
+                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+            ),
         )
 
         when {
-            isGenerating -> {
-                FilledTonalIconButton(
-                    onClick = onStopGeneration,
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    ),
-                ) {
-                    Icon(Icons.Default.Stop, contentDescription = "Stop generation")
-                }
-            }
-            text.isNotBlank() -> {
-                FilledIconButton(
-                    onClick = {
-                        if (text.isNotBlank()) {
-                            onSendMessage(text)
-                            text = ""
-                        }
-                    },
-                    enabled = enabled,
-                ) {
-                    Icon(Icons.Default.Send, contentDescription = "Send")
-                }
-            }
-            else -> {
-                MicButton(
-                    onPress = onMicPress,
-                    onRelease = onMicRelease,
-                    enabled = enabled || isRecording,
-                    isRecording = isRecording,
-                )
-            }
+            isGenerating -> ActionCircleButton(
+                icon = Icons.Default.Stop,
+                description = "Stop generation",
+                container = MaterialTheme.colorScheme.errorContainer,
+                content = MaterialTheme.colorScheme.onErrorContainer,
+                onClick = onStopGeneration,
+            )
+            text.isNotBlank() -> ActionCircleButton(
+                icon = Icons.Default.Send,
+                description = "Send",
+                container = MaterialTheme.colorScheme.primary,
+                content = MaterialTheme.colorScheme.onPrimary,
+                onClick = {
+                    onSendMessage(text)
+                    text = ""
+                },
+            )
+            else -> BreathingMicButton(
+                onPress = onMicPress,
+                onRelease = onMicRelease,
+                enabled = enabled || isRecording,
+                isRecording = isRecording,
+            )
         }
     }
 }
 
+// Reusable circular action affordance — used for both Send and Stop. Keeps geometry consistent
+// with the mic button so the composition height never jitters as state flips.
 @Composable
-private fun MicButton(
+private fun ActionCircleButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    container: Color,
+    content: Color,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(52.dp)
+            .background(color = container, shape = CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(imageVector = icon, contentDescription = description, tint = content)
+    }
+}
+
+// Mic button that "breathes" gently when idle (alpha + scale of a halo ring) and pulses harder
+// when recording. Push-to-talk via pointerInput; touch-down starts capture, release ends it.
+@Composable
+private fun BreathingMicButton(
     onPress: () -> Unit,
     onRelease: () -> Unit,
     enabled: Boolean,
     isRecording: Boolean,
 ) {
-    val container = if (isRecording) {
-        MaterialTheme.colorScheme.errorContainer
-    } else {
-        MaterialTheme.colorScheme.primaryContainer
-    }
-    val content = if (isRecording) {
-        MaterialTheme.colorScheme.onErrorContainer
-    } else {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    }
+    val transition = rememberInfiniteTransition(label = "mic-breathing")
+    val haloScale by transition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = if (isRecording) 1.35f else 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = if (isRecording) 700 else 1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "mic-halo-scale",
+    )
+    val haloAlpha by transition.animateFloat(
+        initialValue = 0.0f,
+        targetValue = if (isRecording) 0.55f else 0.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = if (isRecording) 700 else 1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "mic-halo-alpha",
+    )
+
+    val container = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+    val content = if (isRecording) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary
+
     Box(
-        modifier = Modifier
-            .size(48.dp)
-            .background(color = container, shape = CircleShape)
-            .pointerInput(enabled) {
-                if (!enabled) return@pointerInput
-                detectTapGestures(
-                    onPress = {
-                        onPress()
-                        try {
-                            tryAwaitRelease()
-                        } finally {
-                            onRelease()
-                        }
-                    },
-                )
-            },
+        modifier = Modifier.size(60.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Default.Mic, contentDescription = "Hold to record", tint = content)
+        // Halo ring — purely decorative, sits behind the button.
+        Box(
+            modifier = Modifier
+                .size(60.dp)
+                .scale(haloScale)
+                .background(color = container.copy(alpha = haloAlpha), shape = CircleShape),
+        )
+        // Actual button — fixed size on top of the halo.
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .background(color = container, shape = CircleShape)
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    detectTapGestures(
+                        onPress = {
+                            onPress()
+                            try {
+                                tryAwaitRelease()
+                            } finally {
+                                onRelease()
+                            }
+                        },
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Default.Mic, contentDescription = "Hold to record", tint = content)
+        }
     }
 }
 
@@ -531,18 +782,14 @@ private fun RecordingIndicator() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .padding(horizontal = 20.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(12.dp)
-                .background(MaterialTheme.colorScheme.error, shape = CircleShape),
-        )
+        StatusDot(color = MaterialTheme.colorScheme.error, animatePulse = true)
         Text(
             text = "Listening… release to send",
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.error,
         )
     }
@@ -599,7 +846,13 @@ private fun ToolPermissionsDialog(
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Permissions & Roles") },
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+        title = {
+            Text(
+                "Permissions & Roles",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+            )
+        },
         text = {
             Column {
                 Text(
@@ -655,8 +908,6 @@ private fun ToolPermissionsDialog(
     )
 }
 
-// ROLE_ASSISTANT was added in Q (29). On older devices the request is a no-op and we fall
-// back to the legacy Default Apps settings screen so the user can pick EdgeMind manually.
 private fun requestAssistantRole(context: android.content.Context) {
     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
         val rm = context.getSystemService(android.app.role.RoleManager::class.java)
@@ -679,27 +930,24 @@ private fun ErrorBanner(
     message: String,
     onDismiss: () -> Unit,
 ) {
-    Card(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = message,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-                modifier = Modifier.weight(1f),
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .background(
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = RoundedCornerShape(12.dp),
             )
-            TextButton(onClick = onDismiss) { Text("Dismiss") }
-        }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = message,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onDismiss) { Text("Dismiss") }
     }
 }

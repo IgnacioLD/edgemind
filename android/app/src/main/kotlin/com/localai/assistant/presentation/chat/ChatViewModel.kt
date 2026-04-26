@@ -150,8 +150,7 @@ class ChatViewModel @Inject constructor(
         // tool-execute + decode cycle. Without this, the user releases the mic and gets several
         // seconds of silence before the final TTS, which feels broken. The ack is fire-and-
         // forget; the final response will flush this when it speaks.
-        val ack = if (java.util.Locale.getDefault().language.lowercase() == "es") "Vale" else "OK"
-        tts.speak(ack)
+        tts.speak("OK")
         dispatchInference(conversationId, userMessage, audioPcm)
     }
 
@@ -263,6 +262,35 @@ class ChatViewModel @Inject constructor(
         generationJob = null
         tts.stop()
         _uiState.update { it.copy(isLoading = false) }
+    }
+
+    // Wipes the model's KV cache and the on-screen messages, then re-warms the conversation in
+    // the background so the next user turn doesn't pay a 140 s cold-prefill. Use this when the
+    // model starts collapsing (1-token responses, off-topic / wrong-language gibberish) — that's
+    // a sign the persistent conversation has accumulated poisoned context from prior turns.
+    fun newConversation() {
+        viewModelScope.launch {
+            generationJob?.cancel()
+            generationJob = null
+            tts.stop()
+            _uiState.update {
+                it.copy(
+                    messages = emptyList(),
+                    isLoading = false,
+                    error = null,
+                    isPreparing = true,
+                )
+            }
+            try {
+                gemma.resetConversation()
+                gemma.preload()
+            } catch (e: Exception) {
+                Timber.e(e, "Reset failed")
+                _uiState.update { it.copy(error = "Failed to reset: ${e.message}") }
+            } finally {
+                _uiState.update { it.copy(isPreparing = false) }
+            }
+        }
     }
 
     fun clearError() {

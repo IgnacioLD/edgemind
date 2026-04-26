@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.LocalAIAssistant" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Minimal Activity theme — Compose drives the actual visual style via LocalAIAssistantTheme.
+         The background color stops the launch screen from flashing light before Compose renders. -->
+    <style name="Theme.LocalAIAssistant" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/edge_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/edge_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
 </resources>

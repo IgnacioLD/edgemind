@@ -12,13 +12,31 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Required for AlarmClock.ACTION_SET_TIMER / ACTION_SET_ALARM with EXTRA_SKIP_UI=true.
+         Without this, the system silently ignores SKIP_UI and our "set a timer" tool call
+         appears to do nothing on devices that strictly enforce the permission. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
-    <!-- launchApp tool needs to see other apps' launcher activities on Android 11+. -->
+    <!-- launchApp tool needs to see other apps' launcher activities on Android 11+. The
+         additional intent queries make play-from-search resolvable, and the explicit Metrolist
+         package entry lets us check whether it's installed via getApplicationInfo. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <intent>
+            <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" android:host="music.youtube.com" />
+        </intent>
+        <package android:name="com.metrolist.music" />
+        <!-- Poweramp is the preferred target for play_song: documented API, reliable
+             onPlayFromSearch handler, and read-access to its content provider for direct
+             artist/album lookup if we ever need it. -->
+        <package android:name="com.maxmpz.audioplayer" />
     </queries>
 
     <application

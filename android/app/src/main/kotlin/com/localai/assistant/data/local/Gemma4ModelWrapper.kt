@@ -174,7 +174,15 @@ class Gemma4ModelWrapper @Inject constructor(
                         Timber.i("generate() first message arrived ${System.currentTimeMillis() - sendStart}ms after sendMessageAsync")
                     }
                     messageIndex++
+                    val contentTypes = message.contents.contents.joinToString(",") { it::class.simpleName.orEmpty() }
+                    val toolNames = message.toolCalls.joinToString(",") { it.name }
                     val tokenText = message.extractText()
+                    Timber.d(
+                        "msg[$messageIndex] contents=[$contentTypes] " +
+                            "toolCalls=[$toolNames] " +
+                            "channels=${message.channels.keys} " +
+                            "textLen=${tokenText.length} text=${tokenText.take(120)}",
+                    )
                     if (tokenText.isNotEmpty()) {
                         accumulated.append(tokenText)
                         emit(Chunk.Token(tokenText))
@@ -205,6 +213,19 @@ class Gemma4ModelWrapper @Inject constructor(
         }
     }
 
+    // Drops the persistent Conversation so the next turn rebuilds with a clean KV cache. Keeps
+    // the underlying Engine alive — only the dialogue history goes away. Call this when the
+    // conversation has degraded (model collapsing into 1-token responses, off-topic gibberish,
+    // etc.) which can happen after enough turns when accumulated bad audio interpretations
+    // poison the cache.
+    suspend fun resetConversation() {
+        initLock.withLock {
+            Timber.i("resetConversation: dropping persistent conversation")
+            runCatching { persistentConversation?.close() }
+            persistentConversation = null
+        }
+    }
+
     fun close() {
         runCatching { persistentConversation?.close() }
         persistentConversation = null
@@ -231,8 +252,7 @@ class Gemma4ModelWrapper @Inject constructor(
                 Calendar event times must be ISO 8601 LOCAL format with no timezone suffix (example: 2026-04-26T19:00:00). Treat them as the [Now] timezone.
                 For greetings and general-knowledge questions, reply directly without calling any tool. Call a tool only when the user explicitly asks for an action (timer, music, calendar read/create, contact lookup, app launch, flashlight, volume) or for current information you cannot know (then use search_web).
                 After a tool returns, ALWAYS write a short natural-language reply describing what you did or found. Never end your turn with only a tool call.
-                Reply in the SAME language the user wrote or spoke in. If they write in Spanish, reply in Spanish. If they speak in French, reply in French. If they use English, reply in English. Mirror their language exactly, including for tool result summaries. Never default to English if the user used a different language.
-                Reply in one or two sentences.
+                Always reply in English, regardless of what language the user uses. Reply in one or two sentences.
                 Do not produce reasoning, thinking, analysis, scratchpad, or chain-of-thought tags.
                 """.trimIndent(),
             ),
