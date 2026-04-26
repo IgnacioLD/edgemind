@@ -5,8 +5,11 @@ import com.localai.assistant.data.local.ModelFileManager
 import com.localai.assistant.domain.model.InferenceRequest
 import com.localai.assistant.domain.model.InferenceResult
 import com.localai.assistant.domain.repository.ModelRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -57,4 +60,9 @@ class ModelRepositoryImpl @Inject constructor(
             emit(InferenceResult.Error(e.message ?: "Inference failed", e))
         }
     }
+        // Pin upstream + the file check + collect lambda to IO so they never run on Main when the
+        // ChatViewModel collects on viewModelScope (Main.immediate). buffer() decouples the
+        // producer from UI-side recompositions so a slow recompose can't backpressure the model.
+        .flowOn(Dispatchers.IO)
+        .buffer()
 }

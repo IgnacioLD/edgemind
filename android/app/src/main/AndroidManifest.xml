@@ -8,6 +8,19 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Tool permissions (Phase 3-4) -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- launchApp tool needs to see other apps' launcher activities on Android 11+. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".LocalAIApplication"
         android:allowBackup="true"
@@ -20,6 +33,13 @@
         android:theme="@style/Theme.LocalAIAssistant"
         tools:targetApi="31">
 
+        <!-- Required by LiteRT-LM docs to enable Backend.GPU(). Without these the platform
+             linker won't expose libOpenCL.so to the app even when the device has it, so the
+             GPU sampler crashes on init. `required="false"` keeps the app installable on
+             devices that lack the libs (we fall back to Backend.CPU() at runtime). -->
+        <uses-native-library android:name="libvndksupport.so" android:required="false" />
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+
         <activity
             android:name=".presentation.MainActivity"
             android:exported="true"
@@ -30,6 +50,18 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Music tools (now-playing) need MediaSessionManager.getActiveSessions, which requires
+             this listener to be enabled by the user under Settings → Notification access. -->
+        <service
+            android:name=".data.system.AssistantNotificationListener"
+            android:exported="false"
+            android:label="EdgeMind notification access"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>

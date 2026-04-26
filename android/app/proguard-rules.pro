@@ -35,3 +35,19 @@
 -keepclasseswithmembers class com.localai.assistant.domain.model.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
+
+# litertlm reflective tool dispatch — ReflectionTool reads @Tool/@ToolParam at runtime.
+-keepattributes RuntimeVisibleAnnotations, RuntimeInvisibleAnnotations
+-keepattributes RuntimeVisibleParameterAnnotations, RuntimeInvisibleParameterAnnotations
+-keepattributes MethodParameters, Signature, Exceptions
+-keep class com.google.ai.edge.litertlm.Tool
+-keep class com.google.ai.edge.litertlm.ToolParam
+-keep class * implements com.google.ai.edge.litertlm.ToolSet { *; }
+-keepclassmembers class * implements com.google.ai.edge.litertlm.ToolSet {
+    @com.google.ai.edge.litertlm.Tool <methods>;
+}
+
+# Kotlin reflection
+-keep class kotlin.Metadata { *; }
+-keep class kotlin.reflect.** { *; }
+-dontwarn kotlin.reflect.jvm.internal.**

@@ -6,9 +6,12 @@ import com.localai.assistant.domain.model.Message
 import com.localai.assistant.domain.model.MessageRole
 import com.localai.assistant.domain.repository.ConversationRepository
 import com.localai.assistant.domain.repository.ModelRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.onStart
 import javax.inject.Inject
 
 class SendMessageUseCase @Inject constructor(
@@ -29,25 +32,33 @@ class SendMessageUseCase @Inject constructor(
                 imageUri = userMessage.imageUri,
                 audioPcm = audioPcm,
             ),
-        ).onEach { result ->
-            conversationRepository.addMessage(conversationId, userMessage)
-
-            if (result is InferenceResult.Success) {
-                conversationRepository.addMessage(
-                    conversationId = conversationId,
-                    message = Message(
-                        content = result.text,
-                        role = MessageRole.ASSISTANT,
+        )
+            // Persist the user's message exactly once at flow start, not per-emission. The previous
+            // implementation called addMessage on every Streaming chunk, queueing dozens of redundant
+            // Room writes per turn.
+            .onStart {
+                conversationRepository.addMessage(conversationId, userMessage)
+            }
+            .onEach { result ->
+                if (result is InferenceResult.Success) {
+                    conversationRepository.addMessage(
+                        conversationId = conversationId,
+                        message = Message(
+                            content = result.text,
+                            role = MessageRole.ASSISTANT,
+                        ),
+                    )
+                }
+            }
+            .catch { exception ->
+                emit(
+                    InferenceResult.Error(
+                        message = "Failed to process message: ${exception.message}",
+                        cause = exception,
                     ),
                 )
             }
-        }.catch { exception ->
-            emit(
-                InferenceResult.Error(
-                    message = "Failed to process message: ${exception.message}",
-                    cause = exception,
-                ),
-            )
-        }
+            // Keep persistence work off Main even when the ChatViewModel collects on Main.
+            .flowOn(Dispatchers.IO)
     }
 }

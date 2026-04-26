@@ -94,6 +94,9 @@ dependencies {
     // Serialization
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
 
+    // Kotlin reflection — litertlm's ReflectionTool reflects over @Tool-annotated functions.
+    implementation("org.jetbrains.kotlin:kotlin-reflect:2.2.21")
+
     // On-device LLM inference — LiteRT-LM (Gemma 4 E2B with native audio).
     // We use this rather than MediaPipe `tasks-genai` because Gemma 4's audio adapter sections are
     // CPU-pinned in the .litertlm but tasks-genai's audio executor is hardcoded GPU-only and fails

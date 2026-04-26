@@ -13,6 +13,7 @@ android/app/src/main/assets/models/
 
 # Android build outputs
 android/.gradle/
+android/.kotlin/
 android/build/
 android/app/build/
 android/*/build/
