@@ -96,8 +96,13 @@ class Gemma4ModelWrapper @Inject constructor(
                 "Gemma 4 model not present at ${fileManager.modelFile.absolutePath}; download must complete first."
             }
 
-            // Try GPU first per the docs; on failure fall back to CPU. Don't probe — just attempt.
+            // Backend cascade: NPU → GPU → CPU. NPU is first because the Qualcomm-optimized
+            // .litertlm builds have their main LLM section compiled exclusively for NPU and
+            // refuse to load on GPU/CPU. NPU init throws on devices that don't expose a
+            // Hexagon/QNN backend at runtime — the catch swallows it and we move on to GPU
+            // for everyone else (the generic .litertlm has GPU + CPU sections).
             val attempts = listOf<Pair<String, () -> Backend>>(
+                "npu" to { Backend.NPU() },
                 "gpu" to { Backend.GPU() },
                 "cpu" to { Backend.CPU() },
             )
