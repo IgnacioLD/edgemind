@@ -4,6 +4,7 @@ package com.vela.assistant.data.local
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -11,10 +12,15 @@ import javax.inject.Singleton
 // currently sitting in the app's external files dir, logs latency stats under the
 // "VelaBenchmark" tag so you can `adb logcat -s VelaBenchmark` and pull the numbers out.
 //
-// To compare the two model files (generic vs Qualcomm-optimized): run once, push the alternate
-// .litertlm into place via adb (replacing the file at the path ModelFileManager points at,
-// keeping the same filename), kill+relaunch the app, run again. The two runs share the same
-// prompt and the same backend cascade, so the numbers are comparable.
+// The log line includes model_file (the on-disk filename) and model_size_bytes so the two
+// .litertlm builds are unambiguously distinguishable: generic ≈ 2.58 GB, Qualcomm ≈ 3.29 GB.
+// Even if you swap files via `adb push` and keep the same filename, the size byte-count tells
+// you which one was actually loaded.
+//
+// To compare the two model files: run once, push the alternate .litertlm into place via adb
+// (replacing the file at ModelFileManager.modelFile, keeping the same filename and deleting
+// the .ok sentinel), kill+relaunch the app, run again. Same prompt, same backend cascade, so
+// the numbers are comparable.
 //
 // Caveats: the benchmark prompt intentionally mixes a direct-answer ("What time is it?") with
 // a tool call ("Set a timer for 5 minutes."), which means total time includes a tool execution
@@ -24,6 +30,7 @@ import javax.inject.Singleton
 @Singleton
 class ModelBenchmark @Inject constructor(
     private val gemma: Gemma4ModelWrapper,
+    private val fileManager: ModelFileManager,
 ) {
     suspend fun run(): BenchmarkResult? {
         // Cold-start each run: drop any persistent KV cache so we measure prefill from zero.
@@ -32,6 +39,8 @@ class ModelBenchmark @Inject constructor(
         gemma.resetConversation()
 
         val backend = gemma.activeBackend()
+        val modelFileName = fileManager.modelFile.name
+        val modelSizeBytes = fileManager.modelFile.length()
         val started = System.currentTimeMillis()
         var firstTokenAt = -1L
         var chunkCount = 0
@@ -59,16 +68,13 @@ class ModelBenchmark @Inject constructor(
         val chunksPerSec = if (decodeMs > 0) chunkCount * 1000.0 / decodeMs else 0.0
         val charsPerSec = if (decodeMs > 0) charCount * 1000.0 / decodeMs else 0.0
 
-        if (!completed) {
-            Timber.tag(TAG).w(
-                "TIMEOUT prompt='%s' backend=%s ttft_ms=%d total_ms=%d chunks=%d chars=%d",
-                BENCHMARK_PROMPT, backend, ttftMs, totalMs, chunkCount, charCount,
-            )
-            return null
-        }
-
-        Timber.tag(TAG).i(
-            "backend=%s prompt='%s' ttft_ms=%d total_ms=%d decode_ms=%d chunks=%d chars=%d chunks_per_s=%.2f chars_per_s=%.2f response='%s'",
+        // Force Locale.ROOT so decimals always use '.' regardless of device locale — otherwise
+        // a Spanish phone logs "18,46" and grep / awk pipelines downstream parse incorrectly.
+        val message = String.format(
+            Locale.ROOT,
+            "model_file=%s model_size_bytes=%d backend=%s prompt='%s' ttft_ms=%d total_ms=%d decode_ms=%d chunks=%d chars=%d chunks_per_s=%.2f chars_per_s=%.2f response='%s'",
+            modelFileName,
+            modelSizeBytes,
             backend,
             BENCHMARK_PROMPT,
             ttftMs,
@@ -81,7 +87,16 @@ class ModelBenchmark @Inject constructor(
             accumulated.toString().take(160),
         )
 
+        if (!completed) {
+            Timber.tag(TAG).w("TIMEOUT %s", message)
+            return null
+        }
+
+        Timber.tag(TAG).i(message)
+
         return BenchmarkResult(
+            modelFileName = modelFileName,
+            modelSizeBytes = modelSizeBytes,
             backend = backend,
             ttftMs = ttftMs,
             totalMs = totalMs,
@@ -94,6 +109,8 @@ class ModelBenchmark @Inject constructor(
     }
 
     data class BenchmarkResult(
+        val modelFileName: String,
+        val modelSizeBytes: Long,
         val backend: String,
         val ttftMs: Long,
         val totalMs: Long,
