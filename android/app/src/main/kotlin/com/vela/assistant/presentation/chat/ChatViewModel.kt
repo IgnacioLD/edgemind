@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.vela.assistant.data.local.AndroidTtsEngine
 import com.vela.assistant.data.local.AudioRecorder
 import com.vela.assistant.data.local.Gemma4ModelWrapper
+import com.vela.assistant.data.local.OnboardingPreferences
 import com.vela.assistant.domain.model.InferenceResult
 import com.vela.assistant.domain.model.Message
 import com.vela.assistant.domain.model.MessageRole
@@ -35,6 +36,7 @@ class ChatViewModel @Inject constructor(
     private val audioRecorder: AudioRecorder,
     private val tts: AndroidTtsEngine,
     private val gemma: Gemma4ModelWrapper,
+    private val onboardingPreferences: OnboardingPreferences,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -316,6 +318,12 @@ class ChatViewModel @Inject constructor(
 
     fun clearError() {
         _uiState.update { it.copy(error = null) }
+    }
+
+    // Flips the onboarding-complete flag back to false. MainActivity collects this StateFlow
+    // and re-routes to OnboardingScreen on the next recomposition — no activity restart needed.
+    fun replayOnboarding() {
+        onboardingPreferences.reset()
     }
 
     override fun onCleared() {

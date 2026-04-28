@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -167,6 +168,7 @@ fun ChatScreen(
                         ),
                     )
                 },
+                onReplayOnboarding = viewModel::replayOnboarding,
                 onDismiss = { settingsOpen = false },
             )
         }
@@ -258,6 +260,8 @@ private fun EdgeTopBar(
                     style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 0.5.sp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Spacer(modifier = Modifier.width(10.dp))
+                PrivacyBadge()
             }
         }
         IconButton(onClick = onNewConversation) {
@@ -295,6 +299,30 @@ private fun StatusDot(color: Color, animatePulse: Boolean) {
             .size(8.dp)
             .background(color = color.copy(alpha = alpha), shape = CircleShape),
     )
+}
+
+// Permanent privacy indicator. Lock + "On-device" sit next to the model status so the user
+// can see at a glance that nothing leaves their phone — this is the headline product promise
+// and a passive Snackbar wouldn't carry it.
+@Composable
+private fun PrivacyBadge() {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = Icons.Outlined.Lock,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.size(12.dp),
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = "On-device",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 12.sp,
+                letterSpacing = 0.4.sp,
+            ),
+            color = MaterialTheme.colorScheme.secondary,
+        )
+    }
 }
 
 @Composable
@@ -867,6 +895,7 @@ private fun TypingDot(delayMs: Int) {
 @Composable
 private fun ToolPermissionsDialog(
     onGrantToolPermissions: () -> Unit,
+    onReplayOnboarding: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -926,6 +955,10 @@ private fun ToolPermissionsDialog(
                     runCatching { context.startActivity(intent) }
                     onDismiss()
                 }) { Text("Open app settings") }
+                TextButton(onClick = {
+                    onReplayOnboarding()
+                    onDismiss()
+                }) { Text("Replay onboarding") }
             }
         },
         dismissButton = {
