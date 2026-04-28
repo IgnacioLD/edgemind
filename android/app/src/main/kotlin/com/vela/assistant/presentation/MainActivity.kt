@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
 package com.vela.assistant.presentation
 
 import android.os.Bundle

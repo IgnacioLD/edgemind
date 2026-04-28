@@ -1,4 +1,5 @@
-# ONNX Model Files
+# Model files (never commit — Gemma 4 weights download at runtime)
+*.litertlm
 *.onnx
 *.onnx_data
 
@@ -18,9 +19,15 @@ android/build/
 android/app/build/
 android/*/build/
 android/local.properties
+local.properties
 android/.idea/
 android/*.iml
 android/.DS_Store
+
+# Signing material — never commit
+*.keystore
+*.jks
+keystore.properties
 
 # Python
 __pycache__/
