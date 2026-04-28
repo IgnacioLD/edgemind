@@ -18,6 +18,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 @Singleton
 class AndroidTtsEngine @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val languageDetector: LanguageDetector,
 ) {
     @Volatile private var tts: TextToSpeech? = null
     @Volatile private var ready = false
@@ -41,6 +42,35 @@ class AndroidTtsEngine @Inject constructor(
     // VoiceInteractionSession to choreograph "Cargando" → preload → "Dime" → record.
     suspend fun speakAndAwait(text: String) = suspendCancellableCoroutine<Unit> { cont ->
         speak(text) { if (cont.isActive) cont.resume(Unit) }
+    }
+
+    // Detect the language of the supplied text, set the TTS voice to match (with en-US as a
+    // safety net), then speak — returning when the utterance is fully done. Use this for the
+    // model's final response so a Spanish reply gets a Spanish voice instead of being mangled
+    // by the device default. Short fixed prompts ("OK", "Loading") should keep using the
+    // plain speak/speakAndAwait variants — they're language-neutral and there's no point
+    // paying a detection round-trip on them.
+    suspend fun speakInDetectedLanguageAndAwait(text: String) {
+        if (text.isBlank()) return
+        val locale = languageDetector.detectLanguage(text)
+        suspendCancellableCoroutine<Unit> { cont ->
+            ensureInitialized {
+                applyLanguageOrFallback(locale)
+                val id = "vela-${idCounter.incrementAndGet()}"
+                pendingCallbacks[id] = { if (cont.isActive) cont.resume(Unit) }
+                tts?.stop()
+                tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, id)
+            }
+        }
+    }
+
+    private fun applyLanguageOrFallback(locale: Locale) {
+        val handle = tts ?: return
+        val result = handle.setLanguage(locale)
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            Timber.w("TTS locale ${locale.toLanguageTag()} unavailable (result=$result); falling back to en-US")
+            handle.setLanguage(Locale.US)
+        }
     }
 
     fun stop() {

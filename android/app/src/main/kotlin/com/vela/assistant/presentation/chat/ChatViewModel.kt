@@ -261,7 +261,10 @@ class ChatViewModel @Inject constructor(
                                 messages.add(Message(content = result.text, role = MessageRole.ASSISTANT))
                                 state.copy(messages = messages, isLoading = false, error = null)
                             }
-                            tts.speak(result.text)
+                            // Detect-then-speak so a Spanish reply gets a Spanish voice instead of
+                            // being read with an English accent. Fire-and-forget via launch — we
+                            // don't want to block the inference flow on TTS completion.
+                            viewModelScope.launch { tts.speakInDetectedLanguageAndAwait(result.text) }
                             Timber.d("Generation complete: ${result.tokensGenerated} chunks in ${result.inferenceTimeMs}ms")
                         }
                         is InferenceResult.Error -> {

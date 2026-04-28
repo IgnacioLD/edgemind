@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app_name intentionally absent: the brand "Vela" is shared across locales and falls
+         back to res/values/strings.xml. -->
+
+    <string name="suggestion_timer">Pon un temporizador de 5 minutos</string>
+    <string name="suggestion_calendar">¿Qué tengo en el calendario hoy?</string>
+    <string name="suggestion_alarm">Pon una alarma a las 8</string>
+    <string name="suggestion_now_playing">¿Qué canción está sonando?</string>
+</resources>

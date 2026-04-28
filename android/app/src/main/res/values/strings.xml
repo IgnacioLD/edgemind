@@ -1,4 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Vela</string>
+    <!-- The brand name is locked across locales — never translate. -->
+    <string name="app_name" translatable="false">Vela</string>
+
+    <!-- Suggestion chips on the welcome screen. Each one demonstrates a registered tool
+         (timer, calendar read, alarm, music now-playing). -->
+    <string name="suggestion_timer">Set a 5 minute timer</string>
+    <string name="suggestion_calendar">What\'s on my calendar today?</string>
+    <string name="suggestion_alarm">Set an alarm for 8 AM</string>
+    <string name="suggestion_now_playing">What song is playing?</string>
 </resources>

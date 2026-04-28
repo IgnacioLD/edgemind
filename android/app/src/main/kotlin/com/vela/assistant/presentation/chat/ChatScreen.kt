@@ -80,11 +80,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.vela.assistant.R
 import com.vela.assistant.domain.model.Message
 import com.vela.assistant.domain.model.MessageRole
 import com.vela.assistant.domain.model.ModelStatus
@@ -93,13 +95,6 @@ import com.vela.assistant.presentation.common.theme.StatusMuted
 import com.vela.assistant.presentation.common.theme.StatusPreparing
 import com.vela.assistant.presentation.common.theme.StatusReady
 import kotlinx.coroutines.launch
-
-private val SuggestionPrompts = listOf(
-    "Set a 5 minute timer",
-    "What's on my calendar today?",
-    "Search for nearby restaurants",
-    "Set an alarm for 8 AM",
-)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -399,7 +394,15 @@ private fun WelcomeEmptyState(
             textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(28.dp))
-        SuggestionPrompts.forEach { prompt ->
+        // Localized suggestion chips. Strings live in res/values/strings.xml (English) and
+        // res/values-es/strings.xml (Spanish); each chip showcases a registered tool.
+        val suggestions = listOf(
+            stringResource(R.string.suggestion_timer),
+            stringResource(R.string.suggestion_calendar),
+            stringResource(R.string.suggestion_alarm),
+            stringResource(R.string.suggestion_now_playing),
+        )
+        suggestions.forEach { prompt ->
             SuggestionChip(text = prompt, onClick = { onSuggestionClick(prompt) })
             Spacer(modifier = Modifier.height(8.dp))
         }

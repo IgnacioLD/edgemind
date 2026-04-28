@@ -196,7 +196,9 @@ class VelaVoiceInteractionSession(
                     is InferenceResult.Success -> {
                         responseView?.text = result.text
                         setStatus(speakingStatus)
-                        deps.tts().speakAndAwait(result.text)
+                        // Match the voice to whatever language Gemma chose. Without this the
+                        // overlay reads Spanish replies with the device's default English voice.
+                        deps.tts().speakInDetectedLanguageAndAwait(result.text)
                         finishGracefully()
                     }
                     is InferenceResult.Error -> {

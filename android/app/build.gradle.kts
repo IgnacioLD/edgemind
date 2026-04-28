@@ -126,6 +126,11 @@ dependencies {
     // Timber (logging)
     implementation("com.jakewharton.timber:timber:5.0.1")
 
+    // ML Kit on-device language identification — used so the TTS engine can pick a Locale that
+    // matches whatever language Gemma 4 chose to reply in. Self-contained (no Play Services
+    // dependency at runtime); model is bundled into the AAR and runs entirely on-device.
+    implementation("com.google.mlkit:language-id:17.0.4")
+
     // Testing - Unit Tests
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.7.0")
