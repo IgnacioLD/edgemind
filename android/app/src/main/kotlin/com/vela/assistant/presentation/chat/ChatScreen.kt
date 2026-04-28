@@ -58,6 +58,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -106,7 +109,15 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     var settingsOpen by remember { mutableStateOf(false) }
+
+    // One-shot system notices (e.g. KV-cache auto-reset) surface as a transient Snackbar.
+    LaunchedEffect(Unit) {
+        viewModel.systemNotices.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -135,6 +146,18 @@ fun ChatScreen(
                 isLoading = uiState.isLoading,
                 onNewConversation = viewModel::newConversation,
                 onSettingsClick = { settingsOpen = true },
+            )
+        },
+        snackbarHost = {
+            SnackbarHost(
+                hostState = snackbarHostState,
+                snackbar = { data ->
+                    Snackbar(
+                        snackbarData = data,
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
             )
         },
     ) { paddingValues ->

@@ -17,6 +17,9 @@ import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.sync.Mutex
@@ -59,6 +62,15 @@ class Gemma4ModelWrapper @Inject constructor(
     private var engine: Engine? = null
     @Volatile private var persistentConversation: Conversation? = null
     @Volatile private var activeBackendId: String = "uninit"
+
+    // Turn counter feeding the auto-reset heuristic. Guarded by initLock; only mutated inside it.
+    private var turnCount = 0
+
+    // One-shot signal the UI subscribes to so it can surface a "conversation refreshed" notice.
+    // Buffer = 1 with no replay so a notice doesn't get dropped if the collector is briefly busy,
+    // but a previously-fired notice that nobody saw isn't replayed when a new collector attaches.
+    private val _autoResetEvents = MutableSharedFlow<Unit>(replay = 0, extraBufferCapacity = 1)
+    val autoResetEvents: SharedFlow<Unit> = _autoResetEvents.asSharedFlow()
 
     fun isLoaded(): Boolean = engine != null
 
@@ -147,6 +159,23 @@ class Gemma4ModelWrapper @Inject constructor(
 
     fun generate(prompt: String, audioPcm: ByteArray? = null): Flow<Chunk> = flow {
         Timber.i("generate() entered (prompt.len=${prompt.length}, audio=${audioPcm?.size ?: 0} bytes)")
+
+        // KV cache eventually accumulates enough mis-transcribed audio / off-topic context to
+        // produce 1-token nonsense. Periodic auto-reset keeps responses fresh without losing
+        // the warm engine — the next ensureConversation() rebuilds dialogue history only.
+        val didAutoReset = initLock.withLock {
+            if (turnCount >= MAX_TURNS_BEFORE_RESET) {
+                runCatching { persistentConversation?.close() }
+                persistentConversation = null
+                turnCount = 0
+                true
+            } else false
+        }
+        if (didAutoReset) {
+            Timber.i("Auto-reset KV cache at turn $MAX_TURNS_BEFORE_RESET")
+            _autoResetEvents.tryEmit(Unit)
+        }
+
         val conversation = ensureConversation()
         Timber.i("generate() conversation ready (backend=$activeBackendId)")
 
@@ -190,13 +219,16 @@ class Gemma4ModelWrapper @Inject constructor(
                     }
                 }
             Timber.i("sendMessageAsync done: $messageIndex messages, ${accumulated.length} text chars")
+            initLock.withLock { turnCount++ }
             emit(Chunk.Done(accumulated.toString()))
         } catch (e: Throwable) {
             // Mid-generation failure leaves conversation history in an uncertain state — drop it
-            // so the next turn rebuilds.
+            // so the next turn rebuilds. The cache-counter is meaningless against a missing
+            // conversation, so reset it too.
             Timber.w(e, "Generation failed on backend=$activeBackendId; dropping persistent conversation")
             runCatching { persistentConversation?.close() }
             persistentConversation = null
+            initLock.withLock { turnCount = 0 }
             throw e
         }
     }.flowOn(Dispatchers.IO)
@@ -224,6 +256,7 @@ class Gemma4ModelWrapper @Inject constructor(
             Timber.i("resetConversation: dropping persistent conversation")
             runCatching { persistentConversation?.close() }
             persistentConversation = null
+            turnCount = 0
         }
     }
 
@@ -274,5 +307,10 @@ class Gemma4ModelWrapper @Inject constructor(
         const val DEFAULT_SEED = 0
         // Drop accidental taps on the mic. 0.5 s of 16 kHz mono int16 = 16 KB.
         const val MIN_AUDIO_BYTES = 16_000
+        // After this many successful turns, drop the persistent conversation so the next turn
+        // rebuilds against a fresh KV cache. Calibrated against observed quality drift on
+        // Gemma 4 E2B — somewhere past 25 turns the cache reliably starts emitting 1-token
+        // garbage. 20 leaves headroom and keeps the user's session from collapsing mid-task.
+        const val MAX_TURNS_BEFORE_RESET = 20
     }
 }

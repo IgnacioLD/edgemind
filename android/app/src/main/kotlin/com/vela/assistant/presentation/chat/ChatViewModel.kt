@@ -15,8 +15,11 @@ import com.vela.assistant.domain.usecase.CreateConversationUseCase
 import com.vela.assistant.domain.usecase.SendMessageUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.update
@@ -37,12 +40,26 @@ class ChatViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
+    // One-shot UI notices (shown via Snackbar). Distinct from `error` in uiState because notices
+    // are transient and shouldn't persist as a banner — they fire, surface, dismiss themselves.
+    private val _systemNotices = MutableSharedFlow<String>(replay = 0, extraBufferCapacity = 1)
+    val systemNotices: SharedFlow<String> = _systemNotices.asSharedFlow()
+
     private var generationJob: Job? = null
     private var recordingJob: Job? = null
 
     init {
         observeModelStatus()
+        observeAutoReset()
         initializeConversation()
+    }
+
+    private fun observeAutoReset() {
+        viewModelScope.launch {
+            gemma.autoResetEvents.collect {
+                _systemNotices.tryEmit("Conversation reset to keep responses fresh.")
+            }
+        }
     }
 
     private fun observeModelStatus() {
