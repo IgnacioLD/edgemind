@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.vela.assistant.data.local.AndroidTtsEngine
 import com.vela.assistant.data.local.AudioRecorder
 import com.vela.assistant.data.local.Gemma4ModelWrapper
+import com.vela.assistant.data.local.ModelBenchmark
 import com.vela.assistant.data.local.OnboardingPreferences
 import com.vela.assistant.domain.model.InferenceResult
 import com.vela.assistant.domain.model.Message
@@ -37,6 +38,7 @@ class ChatViewModel @Inject constructor(
     private val tts: AndroidTtsEngine,
     private val gemma: Gemma4ModelWrapper,
     private val onboardingPreferences: OnboardingPreferences,
+    private val modelBenchmark: ModelBenchmark,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ChatUiState())
@@ -324,6 +326,23 @@ class ChatViewModel @Inject constructor(
     // and re-routes to OnboardingScreen on the next recomposition — no activity restart needed.
     fun replayOnboarding() {
         onboardingPreferences.reset()
+    }
+
+    // Dev-only. Fires the fixed benchmark prompt at the model and logs latency stats under
+    // the "VelaBenchmark" tag (grep with `adb logcat -s VelaBenchmark`). Surfaces a Snackbar
+    // when finished so you don't have to keep logcat open just to know the run completed.
+    fun runBenchmark() {
+        viewModelScope.launch {
+            _systemNotices.tryEmit("Benchmark started — see logcat tag 'VelaBenchmark'.")
+            val result = runCatching { modelBenchmark.run() }
+                .onFailure { Timber.e(it, "Benchmark failed") }
+                .getOrNull()
+            val message = when {
+                result == null -> "Benchmark failed or timed out — check logcat."
+                else -> "Benchmark done: TTFT ${result.ttftMs} ms, total ${result.totalMs} ms, ${"%.1f".format(result.chunksPerSec)} chunks/s on ${result.backend}."
+            }
+            _systemNotices.tryEmit(message)
+        }
     }
 
     override fun onCleared() {

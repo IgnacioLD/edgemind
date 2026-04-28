@@ -6,6 +6,7 @@ import com.google.common.truth.Truth.assertThat
 import com.vela.assistant.data.local.AndroidTtsEngine
 import com.vela.assistant.data.local.AudioRecorder
 import com.vela.assistant.data.local.Gemma4ModelWrapper
+import com.vela.assistant.data.local.ModelBenchmark
 import com.vela.assistant.data.local.OnboardingPreferences
 import com.vela.assistant.domain.model.*
 import com.vela.assistant.domain.repository.ModelAvailabilityRepository
@@ -45,6 +46,7 @@ class ChatViewModelTest {
     private lateinit var tts: AndroidTtsEngine
     private lateinit var gemma: Gemma4ModelWrapper
     private lateinit var onboardingPreferences: OnboardingPreferences
+    private lateinit var modelBenchmark: ModelBenchmark
     private lateinit var viewModel: ChatViewModel
 
     @Before
@@ -57,6 +59,7 @@ class ChatViewModelTest {
         tts = mock()
         gemma = mock()
         onboardingPreferences = mock()
+        modelBenchmark = mock()
         whenever(gemma.isLoaded()).thenReturn(true)
         // Stub the auto-reset event stream so the ViewModel's init-block collector doesn't NPE.
         whenever(gemma.autoResetEvents).thenReturn(MutableSharedFlow())
@@ -77,7 +80,7 @@ class ChatViewModelTest {
             flowOf(InferenceResult.Loading)
         )
 
-        viewModel = ChatViewModel(sendMessageUseCase, createConversationUseCase, modelAvailability, audioRecorder, tts, gemma, onboardingPreferences)
+        viewModel = ChatViewModel(sendMessageUseCase, createConversationUseCase, modelAvailability, audioRecorder, tts, gemma, onboardingPreferences, modelBenchmark)
         advanceUntilIdle()
 
         // When
@@ -102,7 +105,7 @@ class ChatViewModelTest {
             flowOf(InferenceResult.Loading)
         )
 
-        viewModel = ChatViewModel(sendMessageUseCase, createConversationUseCase, modelAvailability, audioRecorder, tts, gemma, onboardingPreferences)
+        viewModel = ChatViewModel(sendMessageUseCase, createConversationUseCase, modelAvailability, audioRecorder, tts, gemma, onboardingPreferences, modelBenchmark)
         advanceUntilIdle()
 
         // When
@@ -131,7 +134,7 @@ class ChatViewModelTest {
             )
         )
 
-        viewModel = ChatViewModel(sendMessageUseCase, createConversationUseCase, modelAvailability, audioRecorder, tts, gemma, onboardingPreferences)
+        viewModel = ChatViewModel(sendMessageUseCase, createConversationUseCase, modelAvailability, audioRecorder, tts, gemma, onboardingPreferences, modelBenchmark)
         advanceUntilIdle()
 
         // When

@@ -74,6 +74,10 @@ class Gemma4ModelWrapper @Inject constructor(
 
     fun isLoaded(): Boolean = engine != null
 
+    // Backend the engine actually loaded on. Surfaced for diagnostic tooling (e.g. the
+    // benchmark log) — production code should not branch on this.
+    fun activeBackend(): String = activeBackendId
+
     // Warms BOTH the engine and the persistent conversation at app startup so the first user
     // message doesn't pay system-prompt + tool-schema prefill cost.
     suspend fun preload() {

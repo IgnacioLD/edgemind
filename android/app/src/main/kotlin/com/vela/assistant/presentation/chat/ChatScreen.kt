@@ -169,6 +169,7 @@ fun ChatScreen(
                     )
                 },
                 onReplayOnboarding = viewModel::replayOnboarding,
+                onRunBenchmark = viewModel::runBenchmark,
                 onDismiss = { settingsOpen = false },
             )
         }
@@ -896,6 +897,7 @@ private fun TypingDot(delayMs: Int) {
 private fun ToolPermissionsDialog(
     onGrantToolPermissions: () -> Unit,
     onReplayOnboarding: () -> Unit,
+    onRunBenchmark: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -959,6 +961,10 @@ private fun ToolPermissionsDialog(
                     onReplayOnboarding()
                     onDismiss()
                 }) { Text("Replay onboarding") }
+                TextButton(onClick = {
+                    onRunBenchmark()
+                    onDismiss()
+                }) { Text("Run benchmark (dev)") }
             }
         },
         dismissButton = {
