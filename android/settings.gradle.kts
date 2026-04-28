@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LocalAIAssistant"
+rootProject.name = "Vela"
 include(":app")

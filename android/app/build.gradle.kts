@@ -8,11 +8,11 @@ plugins {
 }
 
 android {
-    namespace = "com.localai.assistant"
+    namespace = "com.vela.assistant"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.localai.assistant"
+        applicationId = "com.vela.assistant"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

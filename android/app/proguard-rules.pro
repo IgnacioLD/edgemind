@@ -28,11 +28,11 @@
 }
 
 # Keep data classes for serialization
--keep,includedescriptorclasses class com.localai.assistant.domain.model.**$$serializer { *; }
--keepclassmembers class com.localai.assistant.domain.model.** {
+-keep,includedescriptorclasses class com.vela.assistant.domain.model.**$$serializer { *; }
+-keepclassmembers class com.vela.assistant.domain.model.** {
     *** Companion;
 }
--keepclasseswithmembers class com.localai.assistant.domain.model.** {
+-keepclasseswithmembers class com.vela.assistant.domain.model.** {
     kotlinx.serialization.KSerializer serializer(...);
 }
 

@@ -14,7 +14,7 @@
         android:id="@+id/voice_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="EdgeMind"
+        android:text="Vela"
         android:textColor="@color/edge_on_surface"
         android:textSize="22sp"
         android:textStyle="bold"

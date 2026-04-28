@@ -1,4 +1,4 @@
-# EdgeMind - Android App
+# Vela - Android App
 
 On-device AI assistant with Phi-3 mini (3.8B INT4). Built with Clean Architecture, MVVM, and production-grade practices.
 
@@ -184,7 +184,7 @@ Tests located in `src/androidTest/`:
 wget https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-onnx/resolve/main/cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx
 
 # Push to device
-adb push phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx /sdcard/Android/data/com.localai.assistant/files/models/
+adb push phi3-mini-4k-instruct-cpu-int4-rtn-block-32-acc-level-4.onnx /sdcard/Android/data/com.vela.assistant/files/models/
 ```
 
 ### Tokenizer

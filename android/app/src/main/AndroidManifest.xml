@@ -40,7 +40,7 @@
     </queries>
 
     <application
-        android:name=".LocalAIApplication"
+        android:name=".VelaApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -48,7 +48,7 @@
         android:label="@string/app_name"
         android:roundIcon="@android:drawable/ic_dialog_info"
         android:supportsRtl="true"
-        android:theme="@style/Theme.LocalAIAssistant"
+        android:theme="@style/Theme.Vela"
         tools:targetApi="31">
 
         <!-- Required by LiteRT-LM docs to enable Backend.GPU(). Without these the platform
@@ -61,7 +61,7 @@
         <activity
             android:name=".presentation.MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.LocalAIAssistant"
+            android:theme="@style/Theme.Vela"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -74,7 +74,7 @@
         <service
             android:name=".data.system.AssistantNotificationListener"
             android:exported="false"
-            android:label="EdgeMind notification access"
+            android:label="Vela notification access"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
@@ -90,9 +90,9 @@
              the stub RecognitionService (required by the XML schema even though Gemma 4
              handles audio directly without a separate STT). -->
         <service
-            android:name=".presentation.voice.EdgeMindVoiceInteractionService"
+            android:name=".presentation.voice.VelaVoiceInteractionService"
             android:exported="true"
-            android:label="EdgeMind"
+            android:label="Vela"
             android:permission="android.permission.BIND_VOICE_INTERACTION">
             <meta-data
                 android:name="android.voice_interaction"
@@ -102,13 +102,13 @@
             </intent-filter>
         </service>
         <service
-            android:name=".presentation.voice.EdgeMindVoiceInteractionSessionService"
+            android:name=".presentation.voice.VelaVoiceInteractionSessionService"
             android:exported="true"
             android:permission="android.permission.BIND_VOICE_INTERACTION" />
         <service
             android:name=".presentation.voice.StubRecognitionService"
             android:exported="true"
-            android:label="EdgeMind speech recognition">
+            android:label="Vela speech recognition">
             <intent-filter>
                 <action android:name="android.speech.RecognitionService" />
             </intent-filter>
