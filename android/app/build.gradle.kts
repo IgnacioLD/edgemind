@@ -15,8 +15,10 @@ android {
         applicationId = "com.vela.assistant"
         minSdk = 26
         targetSdk = 34
+        // SemVer (MAJOR.MINOR.PATCH). versionCode is a monotonically-increasing integer that
+        // must be bumped on every release regardless of whether MAJOR/MINOR/PATCH changes.
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -62,6 +64,14 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+// Pin the Kotlin compilation JDK to 21. Gradle's toolchain mechanism either picks an installed
+// JDK 21 or downloads one (when a toolchain resolver is configured), which makes builds
+// reproducible across local machines, CI, and F-Droid's build server even if the host has
+// some other JDK on PATH. Bytecode target stays at 17 via compileOptions / kotlinOptions above.
+kotlin {
+    jvmToolchain(21)
 }
 
 dependencies {

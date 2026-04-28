@@ -18,7 +18,25 @@ cd android
 ./gradlew assembleDebug
 ```
 
-The Gemma 4 `.litertlm` model is downloaded on first launch.
+### Java version
+
+This project requires **JDK 21**. The Kotlin toolchain is pinned to 21 via `kotlin { jvmToolchain(21) }` in `app/build.gradle.kts`, and the Foojay resolver in `settings.gradle.kts` will auto-download a JDK 21 if one isn't installed. If you have JDK 25 installed system-wide and Gradle still picks it up, point `JAVA_HOME` at an installed JDK 21 — for example, the one bundled with Android Studio:
+
+```bash
+export JAVA_HOME=/Applications/Android\ Studio.app/Contents/jbr/Contents/Home
+```
+
+JDK 25 is currently incompatible with the Kotlin/Gradle versions used here.
+
+### Model download
+
+The APK does **not** bundle the model weights. On first launch the app downloads the Gemma 4 E2B `.litertlm` file into the app's external files directory and verifies completion via a sentinel marker:
+
+- **Model:** `gemma-4-E2B-it.litertlm`
+- **Source:** `https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm`
+- **Size:** ~2.5 GB (Wi-Fi recommended)
+
+`ModelDownloader.kt` reports per-byte progress to a `Flow` consumed by `ChatScreen` (which renders a download UI), supports HTTP byte-range resume on partial downloads, and surfaces errors back to the UI.
 
 ## Docs
 
