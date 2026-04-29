@@ -341,5 +341,34 @@ class Gemma4ModelWrapper @Inject constructor(
         // Gemma 4 E2B — somewhere past 25 turns the cache reliably starts emitting 1-token
         // garbage. 20 leaves headroom and keeps the user's session from collapsing mid-task.
         const val MAX_TURNS_BEFORE_RESET = 20
+
+        // Preload the QNN runtime libraries in dependency order BEFORE LiteRT-LM's own JNI
+        // tries to dlopen them lazily. Order matters: every later .so links against symbols
+        // exported by earlier ones, so an UnsatisfiedLinkError on (say) QnnHtp surfaces here
+        // as one clean error instead of as a downstream SIGABRT inside the dispatch lib.
+        //
+        // Mirrors the static init in google-ai-edge/litert-samples qualcomm/gemma_on_device.
+        // V73 stub is the Snapdragon 8 Gen 1 variant — adjacent chips would need V69/V75/V79
+        // but for now we hard-code V73 because that's the test target.
+        //
+        // Each load is wrapped in runCatching: on devices where the QNN libs aren't shipped
+        // (e.g. a future free-flavour build) the misses are logged and we proceed to GPU/CPU.
+        init {
+            for (lib in PRELOAD_LIBS) {
+                runCatching { System.loadLibrary(lib) }
+                    .onSuccess { Timber.i("Preloaded native lib: lib$lib.so") }
+                    .onFailure { Timber.w("Could not preload lib$lib.so: ${it.message}") }
+            }
+        }
+
+        private val PRELOAD_LIBS = listOf(
+            "LiteRt",                 // Must be first — exports symbols the QNN libs depend on.
+            "QnnSystem",              // Qualcomm system services.
+            "QnnHtp",                 // Main HTP runtime.
+            "QnnHtpV73Stub",          // CPU-side stub for Hexagon V73 (Snapdragon 8 Gen 1).
+            "LiteRtDispatch_Qualcomm", // The dispatch bridge LiteRT-LM looks up in nativeLibraryDir.
+            "LiteRtGpuAccelerator",   // GPU accelerator dispatch (best-effort).
+            "LiteRtOpenClAccelerator", // OpenCL accelerator dispatch (best-effort).
+        )
     }
 }

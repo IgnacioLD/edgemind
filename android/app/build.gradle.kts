@@ -28,6 +28,14 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        // Restrict packaged native libs to arm64 only. QNN AARs ship arm64 + x86 variants;
+        // packaging both bloats the APK by ~80 MB for emulator coverage we don't need on a
+        // production build, and mixed-ABI packaging has historically tripped multi-AAR
+        // libLiteRt.so deduplication. Mirrors the working sample app.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildTypes {
