@@ -153,11 +153,16 @@ dependencies {
         exclude(group = "org.tensorflow", module = "tensorflow-lite-api")
     }
 
-    // Qualcomm QNN delegate. Bundles libQnnHtp / libQnnSystem / libQnnGpu / libQnnDsp /
-    // libQnnHtpV{68,69,73,75,79}{Skel,Stub} and pulls qnn-runtime transitively. 2.44.0 is
-    // the version paired with litertlm-android 0.10.2 in the official sample app — older
-    // 2.34.0 fails to satisfy LiteRtDispatchCheckRuntimeCompatibility(). Closed-source
-    // binaries; F-Droid track will need a product-flavor split before distribution.
+    // Qualcomm QNN runtime + LiteRT delegate. The runtime AAR ships the QNN backend libs
+    // (libQnnHtp, libQnnSystem, libQnnHtpV{68,69,73,75,79}{Skel,Stub}, libQnnGpu, libQnnDsp);
+    // the delegate AAR ships libQnnTFLiteDelegate / libqnn_delegate_jni. Both have to be
+    // declared explicitly: in 2.44.0 the delegate does NOT pull the runtime transitively
+    // (verified empirically — depending on delegate alone leaves the HTP libs out of the
+    // APK and dlopen of libLiteRtDispatch_Qualcomm.so fails with "cannot locate symbol
+    // LiteRtQualcommOptionsGet" because the providing libs aren't on disk).
+    // 2.44.0 matches the version pinned by google-ai-edge/litert-samples qualcomm sample.
+    // Closed-source binaries; F-Droid build will need a product-flavor split.
+    implementation("com.qualcomm.qti:qnn-runtime:2.44.0")
     implementation("com.qualcomm.qti:qnn-litert-delegate:2.44.0")
 
     // Room Database (for conversation history)

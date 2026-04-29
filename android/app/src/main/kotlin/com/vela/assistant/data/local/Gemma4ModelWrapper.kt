@@ -356,13 +356,18 @@ class Gemma4ModelWrapper @Inject constructor(
         // PRELOAD_LIBS must be declared above the init block — companion members initialize
         // top-down, and a forward reference here is a compile error.
         private val PRELOAD_LIBS = listOf(
-            "LiteRt",                 // Must be first — exports symbols the QNN libs depend on.
-            "QnnSystem",              // Qualcomm system services.
-            "QnnHtp",                 // Main HTP runtime.
-            "QnnHtpV73Stub",          // CPU-side stub for Hexagon V73 (Snapdragon 8 Gen 1).
-            "LiteRtDispatch_Qualcomm", // The dispatch bridge LiteRT-LM looks up in nativeLibraryDir.
-            "LiteRtGpuAccelerator",   // GPU accelerator dispatch (best-effort).
-            "LiteRtOpenClAccelerator", // OpenCL accelerator dispatch (best-effort).
+            "LiteRt",                  // Must be first — exports the LiteRtQualcomm* symbols
+                                       // the dispatch lib needs at link time. GPU/CPU
+                                       // accelerator dispatch is statically linked into this
+                                       // .so (see "Statically linked GPU accelerator
+                                       // registered" in litert logs), so no separate
+                                       // GpuAccelerator/OpenClAccelerator preload is needed.
+            "QnnSystem",               // Qualcomm system services.
+            "QnnHtp",                  // Main HTP runtime.
+            "QnnHtpV73Stub",           // CPU-side stub for Hexagon V73 (Snapdragon 8 Gen 1).
+            "LiteRtDispatch_Qualcomm", // The dispatch bridge LiteRT-LM looks up at engine init.
+            "LiteRtClGlAccelerator",   // GL/CL accelerator dispatcher (best-effort, ships from
+                                       // litert:2.1.4 AAR; absent on builds without that dep).
         )
 
         init {
