@@ -2,6 +2,7 @@
 package com.vela.assistant.data.local
 
 import android.content.Context
+import android.system.Os
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
@@ -105,6 +106,21 @@ class Gemma4ModelWrapper @Inject constructor(
             // mode (when NPU isn't viable) drops to a catchable LiteRtLmJniException and the
             // cascade can fall through to GPU/CPU.
             val nativeLibDir = context.applicationInfo.nativeLibraryDir
+
+            // ADSP_LIBRARY_PATH is the Hexagon DSP-side lookup variable used by Qualcomm's
+            // QNN runtime to find Skel libs (libQnnHtpV*Skel.so) at JIT/dispatch time. The
+            // regular Android linker path doesn't apply on the DSP side. LD_LIBRARY_PATH
+            // covers the CPU-side dlopen calls. Without these, LiteRtDispatchInitialize()
+            // returns a "not found" error from inside the dispatch lib and the SDK reports
+            // "No usable Dispatch runtime found" at dispatch_delegate.cc:176 — even though
+            // the .so files are physically present in nativeLibraryDir. Mirrors the working
+            // setup in google-ai-edge/litert-samples qualcomm/gemma_on_device.
+            runCatching {
+                Os.setenv("ADSP_LIBRARY_PATH", nativeLibDir, true)
+                Os.setenv("LD_LIBRARY_PATH", nativeLibDir, true)
+                Timber.i("Set ADSP_LIBRARY_PATH and LD_LIBRARY_PATH to $nativeLibDir")
+            }.onFailure { Timber.w(it, "Failed to set DSP lookup env vars") }
+
             val attempts = listOf<Pair<String, () -> Backend>>(
                 "npu" to { Backend.NPU(nativeLibraryDir = nativeLibDir) },
                 "gpu" to { Backend.GPU() },
