@@ -58,6 +58,14 @@
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
         <uses-native-library android:name="libOpenCL.so" android:required="false" />
 
+        <!-- Qualcomm DSP-RPC vendor library — needed by libQnnHtpV*Stub.so to bridge calls
+             from the CPU to the Hexagon NPU. Lives at /vendor/lib64/libcdsprpc.so on
+             Snapdragon devices, but Android's namespace-isolated linker hides vendor libs
+             from apps unless explicitly requested. Without this, dlopen of the Stub lib
+             fails with "library libcdsprpc.so not found" and the dispatch path can't
+             initialise. required="false" so the app still installs on non-Qualcomm devices. -->
+        <uses-native-library android:name="libcdsprpc.so" android:required="false" />
+
         <activity
             android:name=".presentation.MainActivity"
             android:exported="true"
