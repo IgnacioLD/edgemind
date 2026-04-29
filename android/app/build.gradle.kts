@@ -9,7 +9,11 @@ plugins {
 
 android {
     namespace = "com.vela.assistant"
-    compileSdk = 34
+    // Bumped from 34 to 35 because the LiteRT 2.1.4 / QNN 2.44.0 / TFLite 2.16.1 dep set
+    // pulls newer AndroidX + Compose AARs (1.9.0 / 2.10.0 / 1.15.0) that require it.
+    // targetSdk stays at 34 — compileSdk only controls which APIs are available at compile
+    // time, runtime behaviour is governed by targetSdk.
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.vela.assistant"
