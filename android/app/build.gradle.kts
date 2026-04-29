@@ -70,6 +70,10 @@ android {
         // any LiteRtLmJniException can be caught. AGP 8+ defaults this to false.
         jniLibs {
             useLegacyPackaging = true
+            // litertlm-android and litert both ship libLiteRt.so. We want the litert-core
+            // version (it exports LiteRtGetEnvironmentOptions, which the QNN dispatch library
+            // needs at init); without pickFirsts Gradle errors out on duplicate paths.
+            pickFirsts += setOf("**/libLiteRt.so")
         }
     }
 }
@@ -122,15 +126,27 @@ dependencies {
     // is what the model actually requires.
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.10.2")
 
-    // Qualcomm QNN runtime + LiteRT delegate. These ship the native .so files
-    // (libQnnHtp*, libQnnSystem, libQnnGpu, libQnnDsp, ...) that Backend.NPU() needs to dispatch
-    // to Hexagon on Snapdragon devices. Without these the NPU constructor aborts via SIGABRT
-    // because the runtime backend isn't registered. Supported chips per Qualcomm docs include
-    // Snapdragon 8 Gen 1 / 2 / 3 / Elite. NOTE: closed-source binaries — opting in to these
-    // deps is incompatible with F-Droid's "Anti-Features: NonFreeNet/NonFreeAssets" baseline,
-    // so any F-Droid build will need a product flavor that excludes them.
-    implementation("com.qualcomm.qti:qnn-runtime:2.34.0")
-    implementation("com.qualcomm.qti:qnn-litert-delegate:2.34.0")
+    // LiteRT core runtime — needed in addition to litertlm-android because the LiteRT-LM AAR
+    // ships an older / smaller libLiteRt.so that's missing the LiteRtGetEnvironmentOptions
+    // symbol the Qualcomm dispatch library needs at init. The litert AAR ships a fuller
+    // build of libLiteRt.so; pickFirsts in packaging{} below resolves the duplicate.
+    // Mirrors the working setup in google-ai-edge/litert-samples qualcomm/gemma_on_device.
+    implementation("com.google.ai.edge.litert:litert:2.1.4")
+
+    // tensorflow-lite-select-tf-ops drags in the TFLite runtime ops the dispatch delegate
+    // expects to find at delegate-init time. Excludes the smaller tensorflow-lite + api
+    // artifacts because litert already provides the equivalents and they conflict.
+    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1") {
+        exclude(group = "org.tensorflow", module = "tensorflow-lite")
+        exclude(group = "org.tensorflow", module = "tensorflow-lite-api")
+    }
+
+    // Qualcomm QNN delegate. Bundles libQnnHtp / libQnnSystem / libQnnGpu / libQnnDsp /
+    // libQnnHtpV{68,69,73,75,79}{Skel,Stub} and pulls qnn-runtime transitively. 2.44.0 is
+    // the version paired with litertlm-android 0.10.2 in the official sample app — older
+    // 2.34.0 fails to satisfy LiteRtDispatchCheckRuntimeCompatibility(). Closed-source
+    // binaries; F-Droid track will need a product-flavor split before distribution.
+    implementation("com.qualcomm.qti:qnn-litert-delegate:2.44.0")
 
     // Room Database (for conversation history)
     val roomVersion = "2.8.4"
