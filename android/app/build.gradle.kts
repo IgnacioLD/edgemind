@@ -63,6 +63,14 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        // Extract bundled .so files to /data/app/.../lib/arm64 at install time. Required
+        // because Qualcomm's QNN runtime loads its Skel libs (libQnnHtpV73Skel.so etc.) via
+        // raw dlopen() against nativeLibraryDir — that codepath can't read compressed entries
+        // from inside the APK, so without extraction the loader aborts via SIGABRT before
+        // any LiteRtLmJniException can be caught. AGP 8+ defaults this to false.
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
