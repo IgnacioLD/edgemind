@@ -69,6 +69,11 @@ export ANDROID_SDK_API_LEVEL=35
 export TF_SET_ANDROID_WORKSPACE=1
 export PYTHON_BIN_PATH="$(which python3)"
 export USE_DEFAULT_PYTHON_LIB_PATH=1
+# LiteRT v2.1.4 ships requirements_lock.txt only for Python 3.10–3.13. Pinning to 3.12
+# tells Bazel's hermetic Python repo rule to download that version (no local install
+# needed). Without this, builds on macOS with Python 3.14 in the system path abort
+# during repo fetch with "Could not find requirements_lock.txt file matching ...".
+export HERMETIC_PYTHON_VERSION=3.12
 
 echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
 echo "ANDROID_BUILD_TOOLS_VERSION=$ANDROID_BUILD_TOOLS_VERSION"
@@ -90,6 +95,7 @@ echo ""
 bazel build \
     -c opt \
     --config=android_arm64 \
+    --repo_env=HERMETIC_PYTHON_VERSION=3.12 \
     //litert/c:litert_runtime_c_api_so \
     --verbose_failures
 
