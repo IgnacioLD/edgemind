@@ -353,14 +353,8 @@ class Gemma4ModelWrapper @Inject constructor(
         //
         // Each load is wrapped in runCatching: on devices where the QNN libs aren't shipped
         // (e.g. a future free-flavour build) the misses are logged and we proceed to GPU/CPU.
-        init {
-            for (lib in PRELOAD_LIBS) {
-                runCatching { System.loadLibrary(lib) }
-                    .onSuccess { Timber.i("Preloaded native lib: lib$lib.so") }
-                    .onFailure { Timber.w("Could not preload lib$lib.so: ${it.message}") }
-            }
-        }
-
+        // PRELOAD_LIBS must be declared above the init block — companion members initialize
+        // top-down, and a forward reference here is a compile error.
         private val PRELOAD_LIBS = listOf(
             "LiteRt",                 // Must be first — exports symbols the QNN libs depend on.
             "QnnSystem",              // Qualcomm system services.
@@ -370,5 +364,13 @@ class Gemma4ModelWrapper @Inject constructor(
             "LiteRtGpuAccelerator",   // GPU accelerator dispatch (best-effort).
             "LiteRtOpenClAccelerator", // OpenCL accelerator dispatch (best-effort).
         )
+
+        init {
+            for (lib in PRELOAD_LIBS) {
+                runCatching { System.loadLibrary(lib) }
+                    .onSuccess { Timber.i("Preloaded native lib: lib$lib.so") }
+                    .onFailure { Timber.w("Could not preload lib$lib.so: ${it.message}") }
+            }
+        }
     }
 }
