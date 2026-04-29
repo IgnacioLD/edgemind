@@ -96,13 +96,17 @@ class Gemma4ModelWrapper @Inject constructor(
                 "Gemma 4 model not present at ${fileManager.modelFile.absolutePath}; download must complete first."
             }
 
-            // Backend cascade: NPU → GPU → CPU. NPU is first because the Qualcomm-optimized
-            // .litertlm builds have their main LLM section compiled exclusively for NPU and
-            // refuse to load on GPU/CPU. NPU init throws on devices that don't expose a
-            // Hexagon/QNN backend at runtime — the catch swallows it and we move on to GPU
-            // for everyone else (the generic .litertlm has GPU + CPU sections).
+            // Backend cascade: NPU → GPU → CPU. The NPU constructor MUST receive the app's
+            // nativeLibraryDir so LiteRT-LM can locate the bundled Qualcomm QNN runtime libs
+            // (libQnnHtp.so, libQnnSystem.so, etc. shipped by com.qualcomm.qti:qnn-runtime).
+            // Calling Backend.NPU() with no args makes the native loader abort via SIGABRT
+            // because the runtime libs can't be found — verified empirically on Snapdragon
+            // 8 Gen 1 with the qcs8275-tagged .litertlm. With the dir supplied, the failure
+            // mode (when NPU isn't viable) drops to a catchable LiteRtLmJniException and the
+            // cascade can fall through to GPU/CPU.
+            val nativeLibDir = context.applicationInfo.nativeLibraryDir
             val attempts = listOf<Pair<String, () -> Backend>>(
-                "npu" to { Backend.NPU() },
+                "npu" to { Backend.NPU(nativeLibraryDir = nativeLibDir) },
                 "gpu" to { Backend.GPU() },
                 "cpu" to { Backend.CPU() },
             )

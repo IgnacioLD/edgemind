@@ -114,6 +114,16 @@ dependencies {
     // is what the model actually requires.
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.10.2")
 
+    // Qualcomm QNN runtime + LiteRT delegate. These ship the native .so files
+    // (libQnnHtp*, libQnnSystem, libQnnGpu, libQnnDsp, ...) that Backend.NPU() needs to dispatch
+    // to Hexagon on Snapdragon devices. Without these the NPU constructor aborts via SIGABRT
+    // because the runtime backend isn't registered. Supported chips per Qualcomm docs include
+    // Snapdragon 8 Gen 1 / 2 / 3 / Elite. NOTE: closed-source binaries — opting in to these
+    // deps is incompatible with F-Droid's "Anti-Features: NonFreeNet/NonFreeAssets" baseline,
+    // so any F-Droid build will need a product flavor that excludes them.
+    implementation("com.qualcomm.qti:qnn-runtime:2.34.0")
+    implementation("com.qualcomm.qti:qnn-litert-delegate:2.34.0")
+
     // Room Database (for conversation history)
     val roomVersion = "2.8.4"
     implementation("androidx.room:room-runtime:$roomVersion")
