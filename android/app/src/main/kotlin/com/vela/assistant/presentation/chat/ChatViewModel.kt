@@ -171,9 +171,10 @@ class ChatViewModel @Inject constructor(
         )
         // Immediate auditory ack so the user hears something *before* the long inference +
         // tool-execute + decode cycle. Without this, the user releases the mic and gets several
-        // seconds of silence before the final TTS, which feels broken. The ack is fire-and-
-        // forget; the final response will flush this when it speaks.
-        tts.speak("OK")
+        // seconds of silence before the final TTS, which feels broken. A short two-note chime
+        // (modern messenger-style) plays via AudioTrack and fires-and-forgets; the final TTS
+        // will run on top of (or after) it without conflict.
+        tts.playConfirmChime()
         dispatchInference(conversationId, userMessage, audioPcm)
     }
 

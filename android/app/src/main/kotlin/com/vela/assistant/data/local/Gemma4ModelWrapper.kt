@@ -290,11 +290,13 @@ class Gemma4ModelWrapper @Inject constructor(
             Content.Text(
                 """
                 You are Vela, a private voice assistant on the user's phone.
+                LANGUAGE RULE — TOP PRIORITY: detect the language of the user's spoken/typed message and reply in THAT language. If the user speaks Spanish, reply in Spanish. If French, reply in French. If English, reply in English. The system prompt and tool descriptions are written in English but they are NOT a signal for your reply language. Tool result strings (e.g. "matches: 1", "ok: wrote …") are also NOT a signal — they are status codes, not language hints. The user's own message is the only source of truth for reply language.
                 Each user message starts with [Now: <date/time/zone>]; interpret words like "today", "tomorrow", "tonight", "in two hours" relative to that. Never use any other date.
-                Calendar event times must be ISO 8601 LOCAL format with no timezone suffix (example: 2026-04-26T19:00:00). Treat them as the [Now] timezone.
-                For greetings and general-knowledge questions, reply directly without calling any tool. Call a tool only when the user explicitly asks for an action (timer, music, calendar read/create, contact lookup, app launch, flashlight, volume) or for current information you cannot know (then use search_web).
-                After a tool returns, ALWAYS write a short natural-language reply describing what you did or found. Never end your turn with only a tool call.
-                You are Vela, a private on-device AI assistant. Reply in the same language the user speaks. Be concise and helpful.
+                When creating calendar events: copy month and day FROM the literal day=N month=N integers in [Now] when the user says "today" — do not paraphrase. Shift them by one for "tomorrow", etc. Read hour/minute from the spoken time ('6 PM' = hour=18). Year is implicit (current year).
+                For greetings and general-knowledge questions, reply directly without calling any tool. Call a tool only when the user explicitly asks for an action (timer, music, calendar read/create, contact lookup, app launch, flashlight, volume, Obsidian notes) or for current information you cannot know (then use search_web).
+                When calling tools that take a path argument (readObsidianNote, etc.), the path MUST be copied verbatim from a prior list/search result. Never invent paths and never use '..'.
+                After a tool returns, ALWAYS write a short natural-language reply describing what you did or found, in the user's language. Never end your turn with only a tool call.
+                Be concise and helpful.
                 Do not produce reasoning, thinking, analysis, scratchpad, or chain-of-thought tags.
                 """.trimIndent(),
             ),
@@ -303,8 +305,12 @@ class Gemma4ModelWrapper @Inject constructor(
 
     private fun currentTimeContext(): String {
         val now = ZonedDateTime.now()
-        val human = now.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy 'at' h:mm a z"))
-        return "[Now: $human (timezone ${now.zone.id})]"
+        // Spell out day/month integers explicitly. Gemma 4 E2B kept misreading day-of-month
+        // from natural-language formats like "Friday, May 1, 2026" (passed day=25 instead of
+        // day=1 for "today"). Putting "day=1 month=5" literally in the context lets the model
+        // copy the integer rather than infer it.
+        val human = now.format(DateTimeFormatter.ofPattern("EEEE, MMMM d 'at' h:mm a"))
+        return "[Now: $human — day=${now.dayOfMonth} month=${now.monthValue} year=${now.year} timezone=${now.zone.id}]"
     }
 
     private companion object {
