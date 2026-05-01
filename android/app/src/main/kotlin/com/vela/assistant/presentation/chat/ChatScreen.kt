@@ -46,7 +46,6 @@ import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -158,8 +157,11 @@ fun ChatScreen(
         },
     ) { paddingValues ->
         if (settingsOpen) {
-            ToolPermissionsDialog(
-                onGrantToolPermissions = {
+            SettingsSheet(
+                modelStatus = uiState.modelStatus,
+                activeBackend = uiState.activeBackend,
+                messageCount = uiState.messages.size,
+                onRequestToolPermissions = {
                     toolPermissionLauncher.launch(
                         arrayOf(
                             Manifest.permission.READ_CALENDAR,
@@ -168,6 +170,7 @@ fun ChatScreen(
                         ),
                     )
                 },
+                onResetConversation = viewModel::newConversation,
                 onReplayOnboarding = viewModel::replayOnboarding,
                 onRunBenchmark = viewModel::runBenchmark,
                 onDismiss = { settingsOpen = false },
@@ -891,103 +894,6 @@ private fun TypingDot(delayMs: Int) {
                 shape = CircleShape,
             ),
     )
-}
-
-@Composable
-private fun ToolPermissionsDialog(
-    onGrantToolPermissions: () -> Unit,
-    onReplayOnboarding: () -> Unit,
-    onRunBenchmark: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val context = LocalContext.current
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-        title = {
-            Text(
-                "Permissions & Roles",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-            )
-        },
-        text = {
-            Column {
-                Text(
-                    "Vela needs a few grants to act as your assistant.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    "• Calendar & Contacts — read/create events, look up contacts.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "• Notification access — see what's playing for music control.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    "• Default Assistant — long-press home / assist gesture launches Vela.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        },
-        confirmButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                TextButton(onClick = {
-                    onGrantToolPermissions()
-                    onDismiss()
-                }) { Text("Grant calendar & contacts") }
-                TextButton(onClick = {
-                    val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
-                        .apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
-                    runCatching { context.startActivity(intent) }
-                    onDismiss()
-                }) { Text("Open notification access") }
-                TextButton(onClick = {
-                    requestAssistantRole(context)
-                    onDismiss()
-                }) { Text("Set as default Assistant") }
-                TextButton(onClick = {
-                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = Uri.fromParts("package", context.packageName, null)
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    runCatching { context.startActivity(intent) }
-                    onDismiss()
-                }) { Text("Open app settings") }
-                TextButton(onClick = {
-                    onReplayOnboarding()
-                    onDismiss()
-                }) { Text("Replay onboarding") }
-                TextButton(onClick = {
-                    onRunBenchmark()
-                    onDismiss()
-                }) { Text("Run benchmark (dev)") }
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
-        },
-    )
-}
-
-private fun requestAssistantRole(context: android.content.Context) {
-    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-        val rm = context.getSystemService(android.app.role.RoleManager::class.java)
-        if (rm?.isRoleAvailable(android.app.role.RoleManager.ROLE_ASSISTANT) == true) {
-            val intent = rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_ASSISTANT).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            runCatching { context.startActivity(intent) }
-            return
-        }
-    }
-    val fallback = Intent(Settings.ACTION_VOICE_INPUT_SETTINGS).apply {
-        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-    }
-    runCatching { context.startActivity(fallback) }
 }
 
 @Composable

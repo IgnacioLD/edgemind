@@ -42,13 +42,10 @@ class ModelFileManager @Inject constructor(
     }
 
     private companion object {
-        // Pointing at the Qualcomm-optimized build in the project owner's fork while we test
-        // whether the new Backend.NPU() cascade (added in Gemma4ModelWrapper) can load it on
-        // Snapdragon 8 Gen 1. Revert to "litert-community/gemma-4-E2B-it-litert-lm" +
-        // "gemma-4-E2B-it.litertlm" if the NPU backend isn't exposed by LiteRT-LM 0.10.2 or
-        // can't satisfy the model's NPU runtime requirements.
-        const val HF_REPO = "IgnacioLD/gemma-4-E2B-it-litert-lm"
-        const val MODEL_FILENAME = "gemma-4-E2B-it_qualcomm_qcs8275.litertlm"
+        // Generic (non-NPU) build of Gemma 4 E2B. Runs on GPU/CPU via LiteRT-LM. We tried the
+        // Qualcomm NPU path at length and dropped it — see docs/NPU_INVESTIGATION.md.
+        const val HF_REPO = "litert-community/gemma-4-E2B-it-litert-lm"
+        const val MODEL_FILENAME = "gemma-4-E2B-it.litertlm"
         const val MODELS_SUBDIR = "models"
     }
 }

@@ -9,8 +9,9 @@ plugins {
 
 android {
     namespace = "com.vela.assistant"
-    // Bumped from 34 to 35 because the LiteRT 2.1.4 / QNN 2.44.0 / TFLite 2.16.1 dep set
-    // pulls newer AndroidX + Compose AARs (1.9.0 / 2.10.0 / 1.15.0) that require it.
+    // The LiteRT 2.1.4 / TFLite 2.16.1 dep set pulls newer AndroidX + Compose AARs that need
+    // at least 35. We don't go higher because the Compose BOM pinned below is from 2023 — at
+    // SDK 36 it crashes with "LayoutNode should be attached to an owner" during draw passes.
     // targetSdk stays at 34 — compileSdk only controls which APIs are available at compile
     // time, runtime behaviour is governed by targetSdk.
     compileSdk = 35
@@ -75,18 +76,6 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
-        // Extract bundled .so files to /data/app/.../lib/arm64 at install time. Required
-        // because Qualcomm's QNN runtime loads its Skel libs (libQnnHtpV73Skel.so etc.) via
-        // raw dlopen() against nativeLibraryDir — that codepath can't read compressed entries
-        // from inside the APK, so without extraction the loader aborts via SIGABRT before
-        // any LiteRtLmJniException can be caught. AGP 8+ defaults this to false.
-        jniLibs {
-            useLegacyPackaging = true
-            // litertlm-android and litert both ship libLiteRt.so. We want the litert-core
-            // version (it exports LiteRtGetEnvironmentOptions, which the QNN dispatch library
-            // needs at init); without pickFirsts Gradle errors out on duplicate paths.
-            pickFirsts += setOf("**/libLiteRt.so")
-        }
     }
 }
 
@@ -106,8 +95,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
     implementation("androidx.activity:activity-compose:1.8.1")
 
-    // Jetpack Compose
-    val composeBom = platform("androidx.compose:compose-bom:2023.10.01")
+    // Jetpack Compose. Pinned at 2026.04.01 (latest stable as of writing). The earlier
+    // 2023.10.01 (Compose 1.5.4) crashes with "LayoutNode should be attached to an owner"
+    // during draw passes when rapid state updates race the measure pass — reproed reliably
+    // on this app's download progress screen. Fixed in Compose 1.6.0.
+    val composeBom = platform("androidx.compose:compose-bom:2026.04.01")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
@@ -138,32 +130,16 @@ dependencies {
     // is what the model actually requires.
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.10.2")
 
-    // LiteRT core runtime — needed in addition to litertlm-android because the LiteRT-LM AAR
-    // ships an older / smaller libLiteRt.so that's missing the LiteRtGetEnvironmentOptions
-    // symbol the Qualcomm dispatch library needs at init. The litert AAR ships a fuller
-    // build of libLiteRt.so; pickFirsts in packaging{} below resolves the duplicate.
-    // Mirrors the working setup in google-ai-edge/litert-samples qualcomm/gemma_on_device.
+    // LiteRT core runtime — provides libLiteRt.so + libLiteRtClGlAccelerator.so used by the
+    // GPU backend. Mirrors google-ai-edge/litert-samples qualcomm/gemma_on_device.
     implementation("com.google.ai.edge.litert:litert:2.1.4")
 
-    // tensorflow-lite-select-tf-ops drags in the TFLite runtime ops the dispatch delegate
-    // expects to find at delegate-init time. Excludes the smaller tensorflow-lite + api
-    // artifacts because litert already provides the equivalents and they conflict.
-    implementation("org.tensorflow:tensorflow-lite-select-tf-ops:2.16.1") {
-        exclude(group = "org.tensorflow", module = "tensorflow-lite")
-        exclude(group = "org.tensorflow", module = "tensorflow-lite-api")
-    }
-
-    // Qualcomm QNN runtime + LiteRT delegate. The runtime AAR ships the QNN backend libs
-    // (libQnnHtp, libQnnSystem, libQnnHtpV{68,69,73,75,79}{Skel,Stub}, libQnnGpu, libQnnDsp);
-    // the delegate AAR ships libQnnTFLiteDelegate / libqnn_delegate_jni. Both have to be
-    // declared explicitly: in 2.44.0 the delegate does NOT pull the runtime transitively
-    // (verified empirically — depending on delegate alone leaves the HTP libs out of the
-    // APK and dlopen of libLiteRtDispatch_Qualcomm.so fails with "cannot locate symbol
-    // LiteRtQualcommOptionsGet" because the providing libs aren't on disk).
-    // 2.44.0 matches the version pinned by google-ai-edge/litert-samples qualcomm sample.
-    // Closed-source binaries; F-Droid build will need a product-flavor split.
-    implementation("com.qualcomm.qti:qnn-runtime:2.44.0")
-    implementation("com.qualcomm.qti:qnn-litert-delegate:2.44.0")
+    // tensorflow-lite-select-tf-ops dropped 2026-04: its libtensorflowlite_flex_jni.so (68 MB)
+    // is the only remaining lib in the APK that isn't 16 KB-page-aligned, blocking Play Store
+    // submissions targeting Android 15+. Verified empirically that Gemma 4 E2B doesn't require
+    // any flex (TF-side) ops at engine init — the .litertlm sections use only standard TFLite
+    // ops. Restore this dep if a future model section starts requiring flex ops (engine init
+    // would fail with an "op X not found in op resolver" log line).
 
     // Room Database (for conversation history)
     val roomVersion = "2.8.4"
@@ -180,7 +156,7 @@ dependencies {
     // ML Kit on-device language identification — used so the TTS engine can pick a Locale that
     // matches whatever language Gemma 4 chose to reply in. Self-contained (no Play Services
     // dependency at runtime); model is bundled into the AAR and runs entirely on-device.
-    implementation("com.google.mlkit:language-id:17.0.4")
+    implementation("com.google.mlkit:language-id:17.0.6")
 
     // Testing - Unit Tests
     testImplementation("junit:junit:4.13.2")

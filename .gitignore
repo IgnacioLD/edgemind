@@ -34,7 +34,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
-!android/app/src/main/jniLibs/**/*.so
 .Python
 env/
 build/

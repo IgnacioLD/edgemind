@@ -12,6 +12,13 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Obsidian vault access at /sdcard/Obsidian. Scoped storage's READ_EXTERNAL_STORAGE only
+         covers MediaStore-indexed files (images/audio/video) — markdown notes need broad file
+         access. The user grants this from Settings; without it the Obsidian tools fail with a
+         structured permission error the model verbalizes. -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
     <!-- Required for AlarmClock.ACTION_SET_TIMER / ACTION_SET_ALARM with EXTRA_SKIP_UI=true.
          Without this, the system silently ignores SKIP_UI and our "set a timer" tool call
          appears to do nothing on devices that strictly enforce the permission. -->
@@ -57,14 +64,6 @@
              devices that lack the libs (we fall back to Backend.CPU() at runtime). -->
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
         <uses-native-library android:name="libOpenCL.so" android:required="false" />
-
-        <!-- Qualcomm DSP-RPC vendor library — needed by libQnnHtpV*Stub.so to bridge calls
-             from the CPU to the Hexagon NPU. Lives at /vendor/lib64/libcdsprpc.so on
-             Snapdragon devices, but Android's namespace-isolated linker hides vendor libs
-             from apps unless explicitly requested. Without this, dlopen of the Stub lib
-             fails with "library libcdsprpc.so not found" and the dispatch path can't
-             initialise. required="false" so the app still installs on non-Qualcomm devices. -->
-        <uses-native-library android:name="libcdsprpc.so" android:required="false" />
 
         <activity
             android:name=".presentation.MainActivity"

@@ -82,6 +82,7 @@ class ChatViewModel @Inject constructor(
             _uiState.update { it.copy(isPreparing = true) }
             try {
                 gemma.preload()
+                _uiState.update { it.copy(activeBackend = gemma.activeBackend()) }
             } catch (e: Exception) {
                 Timber.e(e, "Model preload failed")
                 _uiState.update { it.copy(error = "Failed to load model: ${e.message}") }
@@ -359,4 +360,7 @@ data class ChatUiState(
     val isPreparing: Boolean = false,
     val error: String? = null,
     val modelStatus: ModelStatus = ModelStatus.Missing,
+    // The backend Gemma 4 actually loaded on (e.g. "gpu", "cpu"). "uninit" until preload
+    // succeeds. Surfaced in the Settings sheet so the user can see whether GPU is being used.
+    val activeBackend: String = "uninit",
 )

@@ -2,7 +2,6 @@
 package com.vela.assistant.data.local
 
 import android.content.Context
-import android.system.Os
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
@@ -97,32 +96,12 @@ class Gemma4ModelWrapper @Inject constructor(
                 "Gemma 4 model not present at ${fileManager.modelFile.absolutePath}; download must complete first."
             }
 
-            // Backend cascade: NPU → GPU → CPU. The NPU constructor MUST receive the app's
-            // nativeLibraryDir so LiteRT-LM can locate the bundled Qualcomm QNN runtime libs
-            // (libQnnHtp.so, libQnnSystem.so, etc. shipped by com.qualcomm.qti:qnn-runtime).
-            // Calling Backend.NPU() with no args makes the native loader abort via SIGABRT
-            // because the runtime libs can't be found — verified empirically on Snapdragon
-            // 8 Gen 1 with the qcs8275-tagged .litertlm. With the dir supplied, the failure
-            // mode (when NPU isn't viable) drops to a catchable LiteRtLmJniException and the
-            // cascade can fall through to GPU/CPU.
-            val nativeLibDir = context.applicationInfo.nativeLibraryDir
-
-            // ADSP_LIBRARY_PATH is the Hexagon DSP-side lookup variable used by Qualcomm's
-            // QNN runtime to find Skel libs (libQnnHtpV*Skel.so) at JIT/dispatch time. The
-            // regular Android linker path doesn't apply on the DSP side. LD_LIBRARY_PATH
-            // covers the CPU-side dlopen calls. Without these, LiteRtDispatchInitialize()
-            // returns a "not found" error from inside the dispatch lib and the SDK reports
-            // "No usable Dispatch runtime found" at dispatch_delegate.cc:176 — even though
-            // the .so files are physically present in nativeLibraryDir. Mirrors the working
-            // setup in google-ai-edge/litert-samples qualcomm/gemma_on_device.
-            runCatching {
-                Os.setenv("ADSP_LIBRARY_PATH", nativeLibDir, true)
-                Os.setenv("LD_LIBRARY_PATH", nativeLibDir, true)
-                Timber.i("Set ADSP_LIBRARY_PATH and LD_LIBRARY_PATH to $nativeLibDir")
-            }.onFailure { Timber.w(it, "Failed to set DSP lookup env vars") }
-
+            // Backend cascade: GPU → CPU. NPU was tried at length and dropped — see
+            // docs/NPU_INVESTIGATION.md for what we tried and why it isn't viable from public
+            // artifacts on Snapdragon 8 Gen 1. The official google-ai-edge/litert-samples
+            // qualcomm/gemma_on_device sample silently lands on GPU on the same chip; we
+            // do the same explicitly.
             val attempts = listOf<Pair<String, () -> Backend>>(
-                "npu" to { Backend.NPU(nativeLibraryDir = nativeLibDir) },
                 "gpu" to { Backend.GPU() },
                 "cpu" to { Backend.CPU() },
             )
@@ -329,7 +308,11 @@ class Gemma4ModelWrapper @Inject constructor(
     }
 
     private companion object {
-        const val MAX_TOKENS = 2048
+        // Bumped from 2048 once the tool registry started pushing system-prompt + tool-schema
+        // prefill past ~1.8K tokens; a short audio clip on top of that triggered "Input token
+        // ids are too long" (2122 >= 2048). Gemma 4 E2B's architectural ceiling is much higher;
+        // 4096 gives ~2x headroom for new tools / longer attached context without retripping.
+        const val MAX_TOKENS = 4096
         const val DEFAULT_TEMPERATURE = 0.7
         const val DEFAULT_TOP_K = 40
         const val DEFAULT_TOP_P = 0.95
@@ -341,41 +324,5 @@ class Gemma4ModelWrapper @Inject constructor(
         // Gemma 4 E2B — somewhere past 25 turns the cache reliably starts emitting 1-token
         // garbage. 20 leaves headroom and keeps the user's session from collapsing mid-task.
         const val MAX_TURNS_BEFORE_RESET = 20
-
-        // Preload the QNN runtime libraries in dependency order BEFORE LiteRT-LM's own JNI
-        // tries to dlopen them lazily. Order matters: every later .so links against symbols
-        // exported by earlier ones, so an UnsatisfiedLinkError on (say) QnnHtp surfaces here
-        // as one clean error instead of as a downstream SIGABRT inside the dispatch lib.
-        //
-        // Mirrors the static init in google-ai-edge/litert-samples qualcomm/gemma_on_device.
-        // V73 stub is the Snapdragon 8 Gen 1 variant — adjacent chips would need V69/V75/V79
-        // but for now we hard-code V73 because that's the test target.
-        //
-        // Each load is wrapped in runCatching: on devices where the QNN libs aren't shipped
-        // (e.g. a future free-flavour build) the misses are logged and we proceed to GPU/CPU.
-        // PRELOAD_LIBS must be declared above the init block — companion members initialize
-        // top-down, and a forward reference here is a compile error.
-        private val PRELOAD_LIBS = listOf(
-            "LiteRt",                  // Must be first — exports the LiteRtQualcomm* symbols
-                                       // the dispatch lib needs at link time. GPU/CPU
-                                       // accelerator dispatch is statically linked into this
-                                       // .so (see "Statically linked GPU accelerator
-                                       // registered" in litert logs), so no separate
-                                       // GpuAccelerator/OpenClAccelerator preload is needed.
-            "QnnSystem",               // Qualcomm system services.
-            "QnnHtp",                  // Main HTP runtime.
-            "QnnHtpV73Stub",           // CPU-side stub for Hexagon V73 (Snapdragon 8 Gen 1).
-            "LiteRtDispatch_Qualcomm", // The dispatch bridge LiteRT-LM looks up at engine init.
-            "LiteRtClGlAccelerator",   // GL/CL accelerator dispatcher (best-effort, ships from
-                                       // litert:2.1.4 AAR; absent on builds without that dep).
-        )
-
-        init {
-            for (lib in PRELOAD_LIBS) {
-                runCatching { System.loadLibrary(lib) }
-                    .onSuccess { Timber.i("Preloaded native lib: lib$lib.so") }
-                    .onFailure { Timber.w("Could not preload lib$lib.so: ${it.message}") }
-            }
-        }
     }
 }

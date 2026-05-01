@@ -6,6 +6,7 @@ import com.vela.assistant.data.tool.CalendarTools
 import com.vela.assistant.data.tool.ContactsTools
 import com.vela.assistant.data.tool.DeviceTools
 import com.vela.assistant.data.tool.MusicTools
+import com.vela.assistant.data.tool.ObsidianTools
 import com.vela.assistant.data.tool.SystemTools
 import dagger.Module
 import dagger.Provides
@@ -32,4 +33,7 @@ object ToolModule {
 
     @Provides @Singleton @IntoSet
     fun provideDeviceToolsProvider(tools: DeviceTools): ToolProvider = tool(tools)
+
+    @Provides @Singleton @IntoSet
+    fun provideObsidianToolsProvider(tools: ObsidianTools): ToolProvider = tool(tools)
 }
